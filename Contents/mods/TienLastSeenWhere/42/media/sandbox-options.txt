@@ -1,0 +1,41 @@
+VERSION = 1,
+
+option TienLastSeenWhere.SearchRule
+{
+    type = enum,
+    numValues = 5,
+    default = 1,
+    page = TienLastSeenWhere,
+    translation = TienLastSeenWhere_SearchRule,
+    valueTranslation = TienLastSeenWhere_SearchRule,
+}
+
+option TienLastSeenWhere.FloorRule
+{
+    type = enum,
+    numValues = 3,
+    default = 1,
+    page = TienLastSeenWhere,
+    translation = TienLastSeenWhere_FloorRule,
+    valueTranslation = TienLastSeenWhere_FloorRule,
+}
+
+option TienLastSeenWhere.SmallItemDistance
+{
+    type = integer,
+    min = 1,
+    max = 30,
+    default = 4,
+    page = TienLastSeenWhere,
+    translation = TienLastSeenWhere_SmallItemDistance,
+}
+
+option TienLastSeenWhere.ForgetAfterDays
+{
+    type = integer,
+    min = 0,
+    max = 365,
+    default = 0,
+    page = TienLastSeenWhere,
+    translation = TienLastSeenWhere_ForgetAfterDays,
+}

@@ -1,0 +1,19 @@
+{
+    "Sandbox_TienLastSeenWhere": "Tien's Last Seen Where",
+    "Sandbox_TienLastSeenWhere_SearchRule": "Search rule",
+    "Sandbox_TienLastSeenWhere_SearchRule_tooltip": "What the item search looks through. Each player's choice: every player picks in their own mod settings. Any other value makes everyone use that rule. What I have seen: containers and floors the character has looked at. Shared: also what the members of their faction and safehouse have seen. Opened by anyone: every container anyone has opened and anything anyone has seen. Everything: all of that plus every container and floor around the player right now (containers nobody has opened yet hold nothing).",
+    "Sandbox_TienLastSeenWhere_SearchRule_option1": "Each player's choice",
+    "Sandbox_TienLastSeenWhere_SearchRule_option2": "What I have seen",
+    "Sandbox_TienLastSeenWhere_SearchRule_option3": "Shared with faction and safehouse",
+    "Sandbox_TienLastSeenWhere_SearchRule_option4": "Opened by anyone",
+    "Sandbox_TienLastSeenWhere_SearchRule_option5": "Everything",
+    "Sandbox_TienLastSeenWhere_FloorRule": "Items on the floor",
+    "Sandbox_TienLastSeenWhere_FloorRule_tooltip": "In sight: items lying on any square the character can see are remembered (small ones only up close, and in the dark only within reach). Within reach: only items shown in the loot window's Floor. Off: floors are never remembered.",
+    "Sandbox_TienLastSeenWhere_FloorRule_option1": "In sight",
+    "Sandbox_TienLastSeenWhere_FloorRule_option2": "Within reach",
+    "Sandbox_TienLastSeenWhere_FloorRule_option3": "Off",
+    "Sandbox_TienLastSeenWhere_SmallItemDistance": "Small item distance",
+    "Sandbox_TienLastSeenWhere_SmallItemDistance_tooltip": "How many tiles away items lighter than 0.2 (rings, pills, bullets...) on the floor can be noticed. Heavier items are noticed anywhere in sight. Items found in search mode are always noticed.",
+    "Sandbox_TienLastSeenWhere_ForgetAfterDays": "Forget after (days)",
+    "Sandbox_TienLastSeenWhere_ForgetAfterDays_tooltip": "In-game days after which a place not seen again is forgotten. 0 never forgets."
+}
