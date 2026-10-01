@@ -14,10 +14,11 @@ then follow an arrow on the floor back to it.
   it. **Take** picks the item up once it is within reach.
 - **Memory follows the character.** It is kept on the server and forgotten when the character dies.
 
-## Keys
+## Opening the search
 
-- **Find an item you have seen** (Options > Key Bindings > Last Seen Where): opens the search window. Default
-  `Ctrl + F`.
+- The **magnifier button** on the left sidebar, right under Inventory, opens and closes the search window.
+- **Find an item you have seen** (Options > Key Bindings > Last Seen Where) does the same from the keyboard. Not bound by
+  default.
 
 ## Settings
 

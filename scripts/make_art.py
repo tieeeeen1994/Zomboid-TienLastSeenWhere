@@ -6,13 +6,16 @@ Needs Pillow. Reads from the local Project Zomboid install, writes:
   Contents/mods/TienLastSeenWhere/42/icon.png                                 128x128
   Contents/mods/TienLastSeenWhere/42/poster.png                               512x512
   Contents/mods/TienLastSeenWhere/42/media/textures/TienLastSeenWhere_Arrow.png  256x128
+  Contents/mods/TienLastSeenWhere/42/media/ui/Sidebar/<size>/TienLastSeenWhere_Off|On_<size>.png
+                                   sidebar button (a map pin with an eye, drawn here),
+                                   48/64/80/96/128 wide like the game's own
   preview.png                                                                  512x512
 """
 
 import math
 import os
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -23,6 +26,7 @@ UI = os.path.expanduser(
 )
 
 LENS = os.path.join(UI, "Sidebar", "128", "Search_On_128.png")
+SIDEBAR_SIZES = (48, 64, 80, 96, 128)
 
 BG_TOP = (40, 46, 38)
 BG_BOTTOM = (14, 16, 13)
@@ -121,7 +125,99 @@ def art(size):
     return img
 
 
+SS = 4
+
+
+def blend(a, b, t):
+    return tuple(round(x + (y - x) * t) for x, y in zip(a, b))
+
+
+def vertical_gradient(size, top, bottom):
+    img = Image.new("RGBA", size)
+    d = ImageDraw.Draw(img)
+    for y in range(size[1]):
+        d.line([(0, y), (size[0], y)], fill=blend(top, bottom, y / max(1, size[1] - 1)) + (255,))
+    return img
+
+
+def grow(mask, px):
+    return mask.filter(ImageFilter.MaxFilter(px * 2 + 1))
+
+
+def solid(size, colour):
+    return Image.new("RGBA", size, colour)
+
+
+def sidebar_icon(size, state):
+    """A map pin with an eye, drawn in the sidebar's style: grey when off, coloured when on,
+    outlined like the game's sidebar icons (a thin white line outside a black one)."""
+    on = state == "On"
+    w, h = size * SS, int(size * 0.75) * SS
+    full = (w, h)
+    img = Image.new("RGBA", full, (0, 0, 0, 0))
+    u = h / 100.0
+    cx = w / 2
+    r = 33 * u
+    cy = 6 * u + r
+    tip = 95 * u
+
+    mask = Image.new("L", full, 0)
+    d = ImageDraw.Draw(mask)
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=255)
+    angle = math.asin(r / (tip - cy))
+    d.polygon([(cx - r * math.cos(angle), cy + r * math.sin(angle)),
+               (cx + r * math.cos(angle), cy + r * math.sin(angle)), (cx, tip)], fill=255)
+
+    stroke = max(SS, round(size * SS / 56))
+    img.paste(solid(full, (255, 255, 255, 255)), (0, 0), grow(mask, stroke * 2))
+    img.paste(solid(full, (12, 12, 12, 255)), (0, 0), grow(mask, stroke))
+    if on:
+        body = vertical_gradient(full, (238, 120, 70), (160, 45, 30))
+    else:
+        body = vertical_gradient(full, (215, 215, 215), (120, 120, 120))
+    img.paste(body, (0, 0), mask)
+    shine = Image.new("L", full, 0)
+    ImageDraw.Draw(shine).ellipse([cx - r * 0.85, cy - r * 0.9, cx + r * 0.1, cy - r * 0.05], fill=70)
+    shine = ImageChops.multiply(shine.filter(ImageFilter.GaussianBlur(3 * SS)), mask)
+    img.paste(solid(full, (255, 255, 255, 255)), (0, 0), shine)
+
+    ew, eh = r * 0.78, r * 0.46
+    eye = Image.new("L", full, 0)
+    outline = []
+    for i in range(41):
+        t = -1 + i / 20
+        outline.append((cx + t * ew, cy - eh * (1 - t * t) ** 0.9))
+    for i in range(41):
+        t = 1 - i / 20
+        outline.append((cx + t * ew, cy + eh * (1 - t * t) ** 0.9))
+    ImageDraw.Draw(eye).polygon(outline, fill=255)
+    img.paste(solid(full, (12, 12, 12, 255)), (0, 0), grow(eye, stroke))
+    img.paste(solid(full, (250, 250, 250, 255) if on else (235, 235, 235, 255)), (0, 0), eye)
+
+    ir = eh * 0.95
+    iris = Image.new("L", full, 0)
+    ImageDraw.Draw(iris).ellipse([cx - ir, cy - ir, cx + ir, cy + ir], fill=255)
+    iris = ImageChops.multiply(iris, eye)
+    if on:
+        iris_fill = vertical_gradient(full, (120, 220, 235), (40, 130, 170))
+    else:
+        iris_fill = vertical_gradient(full, (170, 170, 170), (90, 90, 90))
+    img.paste(iris_fill, (0, 0), iris)
+    d = ImageDraw.Draw(img)
+    pr = ir * 0.45
+    d.ellipse([cx - pr, cy - pr, cx + pr, cy + pr], fill=(20, 20, 20, 255))
+    gr = ir * 0.22
+    gx, gy = cx - ir * 0.45, cy - ir * 0.45
+    d.ellipse([gx - gr, gy - gr, gx + gr, gy + gr], fill=(255, 255, 255, 230))
+    return img.resize((size, int(size * 0.75)), Image.LANCZOS)
+
+
 def main():
+    for size in SIDEBAR_SIZES:
+        folder = os.path.join(MOD, "media", "ui", "Sidebar", str(size))
+        os.makedirs(folder, exist_ok=True)
+        for state in ("Off", "On"):
+            sidebar_icon(size, state).save(os.path.join(folder, "TienLastSeenWhere_%s_%d.png" % (state, size)))
     textures = os.path.join(MOD, "media", "textures")
     os.makedirs(textures, exist_ok=True)
     arrow_texture().save(os.path.join(textures, "TienLastSeenWhere_Arrow.png"))
@@ -129,7 +225,7 @@ def main():
     poster = art(512).convert("RGB")
     poster.save(os.path.join(MOD, "poster.png"))
     poster.save(os.path.join(REPO, "preview.png"))
-    print("Wrote the arrow texture, icon.png, poster.png and preview.png")
+    print("Wrote the sidebar icons, the arrow texture, icon.png, poster.png and preview.png")
 
 
 if __name__ == "__main__":

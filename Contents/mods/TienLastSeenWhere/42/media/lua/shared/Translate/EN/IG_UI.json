@@ -1,5 +1,6 @@
 {
     "IGUI_TienLastSeenWhere_Title": "Last Seen Where",
+    "IGUI_TienLastSeenWhere_SidebarTooltip": "Last Seen Where: find an item you have seen",
     "IGUI_TienLastSeenWhere_Placeholder": "Item name",
     "IGUI_TienLastSeenWhere_Hint": "Type the name of an item you have seen.",
     "IGUI_TienLastSeenWhere_NothingRemembered": "You do not remember seeing that.",

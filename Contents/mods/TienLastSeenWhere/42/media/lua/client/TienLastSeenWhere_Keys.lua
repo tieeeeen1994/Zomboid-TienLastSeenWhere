@@ -14,7 +14,7 @@ local function addKeyBindings()
         end
     end
     table.insert(keyBinding, { value = Keys.SECTION })
-    table.insert(keyBinding, { value = Keys.FIND, key = Keyboard.KEY_F, ctrl = true })
+    table.insert(keyBinding, { value = Keys.FIND, key = 0 })
 end
 
 if keyBinding then

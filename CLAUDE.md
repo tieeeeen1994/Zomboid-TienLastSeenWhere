@@ -102,7 +102,17 @@ listed under "To verify".
 - `client/TienLastSeenWhere_Arrow.lua` + `client/TienLastSeenWhere_Route.lua`: the floor arrow (see below).
 - `client/TienLastSeenWhere_Options.lua`: per-player `PZAPI.ModOptions`: Search rule combo (index 1..4 = rules 2..5),
   arrow colour picker (`addColorPicker`, with alpha).
-- `client/TienLastSeenWhere_Keys.lua`: vanilla key binding `LSW Find Item`, default Ctrl + F (all letters are taken).
+- `client/TienLastSeenWhere_Keys.lua`: vanilla key binding `LSW Find Item`, unbound by default (the user's choice; the
+  sidebar button is the main way in).
+- `client/TienLastSeenWhere_Sidebar.lua`: sidebar button right under Inventory (player 0 only, like every vanilla
+  sidebar button). Wraps `ISEquippedItem:initialise`: after vanilla's, every child at or below the Inventory button's
+  bottom moves down by one button + 15 px (vanilla's gap is a file-local `UI_BORDER_SPACING` 10, plus 5) and the button
+  goes in the gap, sized like Inventory; the ZomboidFixesB42 hotbar button and the war button follow because they are
+  placed from `adminBtn` / the lowest button. Icon `media/ui/Sidebar/<w>/TienLastSeenWhere_Off|On_<w>.png` by the
+  Inventory button's width (48/64/80/96/128; vanilla rebuilds the sidebar when its size option changes), On while the
+  window is open. Hidden in the tutorial. The icon is our own drawing (`sidebar_icon` in `scripts/make_art.py`: a map
+  pin with an eye, grey Off / orange-red with a blue iris On, outlined like the game's icons: a thin white line outside a black one, no shadow), not
+  built from vanilla sidebar icons, which would repeat the Inventory and Search buttons right next to it.
 - `client/TienLastSeenWhere_Debug.lua`: with `-debug`, a world context submenu to aim the arrow and switch drawing mode.
 - `media/sandbox-options.txt`: `SearchRule` (enum 5, default 1), `FloorRule` (enum 3: in sight / in reach / off),
   `SmallItemDistance` (default 4), `ForgetAfterDays` (default 0 = never).
