@@ -436,7 +436,7 @@ end
 function Window:onShow()
     local row = self:selectedRow()
     if row and row.place then
-        LSW.Actions.Show(self:player(), row.place)
+        LSW.Actions.Show(self:player(), row.place, row.fullType)
         self:updateButtons()
     end
 end
@@ -444,7 +444,7 @@ end
 function Window:onGoThere()
     local row = self:selectedRow()
     if row and row.place then
-        LSW.Actions.GoThere(self:player(), row.place)
+        LSW.Actions.GoThere(self:player(), row.place, row.fullType)
         self:updateButtons()
     end
 end
@@ -463,7 +463,7 @@ end
 
 function Window:onRowDoubleClick(item)
     if item and item.place then
-        LSW.Actions.Show(self:player(), item.place)
+        LSW.Actions.Show(self:player(), item.place, item.fullType)
         self:updateButtons()
     end
 end

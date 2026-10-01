@@ -8,57 +8,125 @@ LSW.Arrow = {}
 
 local Arrow = LSW.Arrow
 
-Arrow.MODE_FLOOR = "floor"
-Arrow.MODE_OVERLAY = "overlay"
-Arrow.mode = Arrow.MODE_FLOOR
-
 Arrow.TEXTURE = "media/textures/TienLastSeenWhere_Arrow.png"
-Arrow.START = 0.5
+Arrow.START = 0.6
 Arrow.LENGTH = 1.6
 Arrow.HALF_WIDTH = 0.4
 Arrow.ARRIVED = 1.6
 Arrow.ROUTE_MS = 1000
-Arrow.MARKER_AFTER_ARRIVAL_MS = 8000
+Arrow.FIND_MS = 1000
+Arrow.CLEAR_AFTER_ARRIVAL_MS = 8000
 Arrow.NO_ROUTE_ALPHA = 0.45
 
 local targets = {}
 local texture = nil
 
-local function removeMarker(target)
-    if target and target.marker then
-        target.marker:remove()
-        target.marker = nil
+local function setHighlight(object, playerNum, on, colour)
+    if not object or not object.setHighlighted then
+        return
+    end
+    object:setHighlighted(playerNum, on, false)
+    if on then
+        object:setHighlightColor(playerNum, colour.r, colour.g, colour.b, 1)
     end
 end
 
-local function placeMarker(target)
-    if target.marker then
-        return
+local function unhighlight(playerNum, target)
+    for _, object in ipairs(target and target.objects or {}) do
+        setHighlight(object, playerNum, false)
     end
-    local square = getCell():getGridSquare(math.floor(target.x), math.floor(target.y), target.z)
-    if not square then
-        return
+    if target then
+        target.objects = {}
+    end
+end
+
+local function floorItemsOf(square, fullType)
+    local found = {}
+    local objects = square:getWorldObjects()
+    for i = 0, objects:size() - 1 do
+        local worldItem = objects:get(i)
+        local item = worldItem:getItem()
+        if item and (not fullType or item:getFullType() == fullType) then
+            found[#found + 1] = worldItem
+        end
+    end
+    return found
+end
+
+local function objectsOf(target)
+    local place = target.place
+    local square = getCell():getGridSquare(place.x, place.y, place.z)
+    if place.kind == LSW.KIND_FLOOR then
+        return square and floorItemsOf(square, target.fullType) or {}
+    end
+    local container = LSW.Actions and LSW.Actions.FindContainer(place)
+    if not container then
+        return {}
+    end
+    local part = container:getVehiclePart()
+    if part then
+        return { part:getVehicle() }
+    end
+    local bag = container:getContainingItem()
+    if bag then
+        local worldItem = bag:getWorldItem()
+        if worldItem then
+            return { worldItem }
+        end
+        local outer = bag:getContainer()
+        local parent = outer and outer:getParent()
+        return parent and { parent } or {}
+    end
+    local parent = container:getParent()
+    return parent and { parent } or {}
+end
+
+local function refreshHighlight(playerNum, target, now)
+    if now - (target.findMs or 0) >= Arrow.FIND_MS then
+        target.findMs = now
+        local found = objectsOf(target)
+        local keep = {}
+        for _, object in ipairs(found) do
+            keep[object] = true
+        end
+        for _, object in ipairs(target.objects) do
+            if not keep[object] then
+                setHighlight(object, playerNum, false)
+            end
+        end
+        target.objects = found
     end
     local colour = LSW.Options.GetArrowColour()
-    target.marker = getWorldMarkers():addGridSquareMarker(square, colour.r, colour.g, colour.b, true, 0.8)
+    for _, object in ipairs(target.objects) do
+        setHighlight(object, playerNum, true, colour)
+    end
 end
 
-function Arrow.SetTarget(playerNum, x, y, z)
+function Arrow.SetTarget(playerNum, place, fullType)
+    local current = targets[playerNum]
+    if current and current.place.key == place.key and current.fullType == fullType then
+        current.arrivedMs = nil
+        return
+    end
     Arrow.Clear(playerNum)
-    targets[playerNum] = { x = x + 0.5, y = y + 0.5, z = z, routeMs = 0 }
+    targets[playerNum] = {
+        place = place,
+        fullType = fullType,
+        x = place.x + 0.5,
+        y = place.y + 0.5,
+        z = place.z,
+        routeMs = 0,
+        objects = {},
+    }
 end
 
 function Arrow.Clear(playerNum)
-    removeMarker(targets[playerNum])
+    unhighlight(playerNum, targets[playerNum])
     targets[playerNum] = nil
 end
 
 function Arrow.GetTarget(playerNum)
     return targets[playerNum]
-end
-
-function Arrow.SetMode(mode)
-    Arrow.mode = mode
 end
 
 local function arrowTexture()
@@ -88,22 +156,6 @@ local function aimOf(player, target)
     return target.x, target.y
 end
 
-local function updateTarget(playerNum, player, target)
-    local pz = math.floor(player:getZ())
-    if pz == target.z then
-        placeMarker(target)
-        local distance = LSW.DistanceTo(player:getX(), player:getY(), target.x, target.y)
-        if distance < Arrow.ARRIVED then
-            target.arrivedMs = target.arrivedMs or getTimestampMs()
-        end
-    end
-    if target.arrivedMs and getTimestampMs() - target.arrivedMs > Arrow.MARKER_AFTER_ARRIVAL_MS then
-        Arrow.Clear(playerNum)
-        return false
-    end
-    return true
-end
-
 local function worldCorners(player, aimX, aimY)
     local px = player:getX()
     local py = player:getY()
@@ -131,20 +183,6 @@ local function worldCorners(player, aimX, aimY)
     }
 end
 
-local function draw(points, project, faded)
-    local tex = arrowTexture()
-    if not tex then
-        return
-    end
-    local x1, y1 = project(points[1], points[2])
-    local x2, y2 = project(points[3], points[4])
-    local x3, y3 = project(points[5], points[6])
-    local x4, y4 = project(points[7], points[8])
-    local c = LSW.Options.GetArrowColour()
-    local a = faded and c.a * Arrow.NO_ROUTE_ALPHA or c.a
-    getRenderer():renderPoly(tex, x1, y1, x2, y2, x3, y3, x4, y4, c.r, c.g, c.b, a)
-end
-
 local function floorBadge(player, target)
     local diff = target.z - math.floor(player:getZ())
     if diff == 0 then
@@ -157,54 +195,47 @@ local function floorBadge(player, target)
     return getText("IGUI_TienLastSeenWhere_BadgeDown", count)
 end
 
-local function onPostFloorLayerDraw(z)
-    if Arrow.mode ~= Arrow.MODE_FLOOR then
-        return
-    end
-    local player = IsoCamera.getCameraCharacter()
-    if not player or not instanceof(player, "IsoPlayer") or not player:isLocalPlayer() then
-        return
-    end
-    local playerNum = player:getPlayerNum()
-    local target = targets[playerNum]
-    if not target or target.arrivedMs or math.floor(player:getZ()) ~= z then
-        return
-    end
+local function drawArrow(playerNum, player, target)
     local aimX, aimY = aimOf(player, target)
     local points = worldCorners(player, aimX, aimY)
-    if not points then
+    local tex = arrowTexture()
+    if not points or not tex then
         return
     end
     local pz = player:getZ()
-    local offX = IsoCamera.getOffX(playerNum)
-    local offY = IsoCamera.getOffY(playerNum)
-    draw(points, function(wx, wy)
-        return IsoUtils.XToScreen(wx, wy, pz, 0) - offX, IsoUtils.YToScreen(wx, wy, pz, 0) - offY
-    end, target.noRoute)
+    local function project(wx, wy)
+        return isoToScreenX(playerNum, wx, wy, pz), isoToScreenY(playerNum, wx, wy, pz)
+    end
+    local x1, y1 = project(points[1], points[2])
+    local x2, y2 = project(points[3], points[4])
+    local x3, y3 = project(points[5], points[6])
+    local x4, y4 = project(points[7], points[8])
+    local c = LSW.Options.GetArrowColour()
+    local alpha = target.noRoute and c.a * Arrow.NO_ROUTE_ALPHA or c.a
+    getRenderer():renderPoly(tex, x1, y1, x2, y2, x3, y3, x4, y4, c.r, c.g, c.b, alpha)
+    local badge = floorBadge(player, target)
+    if badge then
+        local bx, by = project(points.tipX, points.tipY)
+        getTextManager():DrawStringCentre(UIFont.Small, bx, by - 24, badge, c.r, c.g, c.b, 1)
+    end
 end
 
 local function onPreUIDraw()
+    local now = getTimestampMs()
     for playerNum, target in pairs(targets) do
         local player = getSpecificPlayer(playerNum)
         if not player or player:isDead() then
             Arrow.Clear(playerNum)
-        elseif updateTarget(playerNum, player, target) and not target.arrivedMs then
-            local aimX, aimY = aimOf(player, target)
-            local points = worldCorners(player, aimX, aimY)
-            if points then
-                local pz = player:getZ()
-                local function project(wx, wy)
-                    return isoToScreenX(playerNum, wx, wy, pz), isoToScreenY(playerNum, wx, wy, pz)
-                end
-                if Arrow.mode == Arrow.MODE_OVERLAY then
-                    draw(points, project, target.noRoute)
-                end
-                local badge = floorBadge(player, target)
-                if badge then
-                    local bx, by = project(points.tipX, points.tipY)
-                    local c = LSW.Options.GetArrowColour()
-                    getTextManager():DrawStringCentre(UIFont.Small, bx, by - 24, badge, c.r, c.g, c.b, 1)
-                end
+        else
+            refreshHighlight(playerNum, target, now)
+            local sameLevel = math.floor(player:getZ()) == target.z
+            if sameLevel and LSW.DistanceTo(player:getX(), player:getY(), target.x, target.y) < Arrow.ARRIVED then
+                target.arrivedMs = target.arrivedMs or now
+            end
+            if target.arrivedMs and now - target.arrivedMs > Arrow.CLEAR_AFTER_ARRIVAL_MS then
+                Arrow.Clear(playerNum)
+            elseif not target.arrivedMs then
+                drawArrow(playerNum, player, target)
             end
         end
     end
@@ -214,8 +245,5 @@ local function onGameStart()
     targets = {}
 end
 
-if Events.OnPostFloorLayerDraw then
-    Events.OnPostFloorLayerDraw.Add(onPostFloorLayerDraw)
-end
 Events.OnPreUIDraw.Add(onPreUIDraw)
 Events.OnGameStart.Add(onGameStart)

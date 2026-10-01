@@ -113,27 +113,33 @@ listed under "To verify".
   window is open. Hidden in the tutorial. The icon is our own drawing (`sidebar_icon` in `scripts/make_art.py`: a map
   pin with an eye, grey Off / orange-red with a blue iris On, outlined like the game's icons: a thin white line outside a black one, no shadow), not
   built from vanilla sidebar icons, which would repeat the Inventory and Search buttons right next to it.
-- `client/TienLastSeenWhere_Debug.lua`: with `-debug`, a world context submenu to aim the arrow and switch drawing mode.
+- `client/TienLastSeenWhere_Debug.lua`: with `-debug`, a world context submenu to aim the arrow at a square or remove it.
 - `media/sandbox-options.txt`: `SearchRule` (enum 5, default 1), `FloorRule` (enum 3: in sight / in reach / off),
   `SmallItemDistance` (default 4), `ForgetAfterDays` (default 0 = never).
 
-## The arrow
+## The arrow and the highlight
 
-- Geometry in world tiles from the player's exact position: start 0.5, length 1.6, half width 0.4; corners projected, so it
-  lies flat like a floor tile. Hidden within 1.6 tiles of the aim point.
-- Floor mode (default): `OnPostFloorLayerDraw(z)` for the player's level, player from `IsoCamera.getCameraCharacter()`,
-  `IsoUtils.XToScreen/YToScreen(x, y, playerZ, 0)` minus `IsoCamera.getOffX/Y(playerNum)`, `getRenderer():renderPoly`.
-  Overlay mode: `OnPreUIDraw`, `isoToScreenX/Y`. The floor badge ("1 up") is always drawn in the UI pass at the tip.
+- `Arrow.SetTarget(playerNum, place, fullType)` (Show, Go there, double-click; a second call for the same place keeps
+  the current target instead of restarting it), `Arrow.Clear`, `Arrow.GetTarget`.
+- Geometry in world tiles from the player's exact position: start 0.6, length 1.6, half width 0.4; the four corners are
+  projected with `isoToScreenX/Y` and drawn with `getRenderer():renderPoly` in `OnPreUIDraw`, so it lies flat like a
+  floor tile but is drawn over characters and walls. The first version drew it in `OnPostFloorLayerDraw`, which the
+  B42 renderer (`FBORenderCell`) never fires: no arrow in game.
+- No floor marker any more (the vanilla grid square marker is a pulsing ellipse that faded in again on every Show).
+  Instead the place itself is highlighted with `setHighlighted(playerNum, true, false)` + `setHighlightColor` in the
+  arrow colour: the container's object, the corpse, the vehicle, a bag's world item (or the object holding it), or for a
+  floor place the world items of that type on the square. Objects are looked up again every second (the chunk may load
+  later) and the highlight is re-applied every frame (the loot window clears highlights when the mouse leaves its
+  buttons).
 - Another floor: `Route.Waypoint` scans 40 tiles for staircases on the player's level (going up: bottom squares) or the level
   below (going down: top squares), picks the lowest (player → entry) + (exit → target), and the arrow aims at the entry,
-  re-evaluated every second and when the level changes. No staircase: faded arrow straight at the target.
-- Target square gets a vanilla grid square marker (shown only on its level). On arrival (within 1.6 tiles, same level) the
-  arrow hides and the marker stays 8 s, then both go.
+  re-evaluated every second and when the level changes. No staircase: faded arrow straight at the target. A "1 up" /
+  "1 down" badge is drawn at the tip.
+- Arrival (within 1.6 tiles, same level): the arrow hides; 8 s later the target and its highlight are cleared.
 
 ## To verify in game
 
-- Floor-mode arrow alignment (zoom, walking, stairs, split screen) and that it draws under characters; that
-  `getCameraCharacter` is the player being drawn in `OnPostFloorLayerDraw`.
+- The arrow in the UI pass (zoom, walking, stairs, split screen); the object highlight on each kind of place.
 - `isCanSee` really means "in sight now"; light threshold 0.3 feels right.
 - MP: the first view of an unexplored container is reported again once the items arrive.
 - Vehicle part names (`IGUI_VehiclePart<id>`), container titles, mini arrows in the list (absolute coordinates).

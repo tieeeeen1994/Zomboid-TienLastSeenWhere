@@ -9,7 +9,7 @@ then follow an arrow on the floor back to it.
 - **Search as you type.** Results are grouped by item, then by place: a small arrow pointing the way on screen, the
   place (counter, fridge, car trunk, corpse, floor, with the room), how far, which floor and how long ago you saw it.
 - **Where to look.** Everywhere, This building, Nearby, or On me (your own bags).
-- **Show** puts an arrow on the floor at your feet, aimed at the place, and marks the square. On another floor it points
+- **Show** puts an arrow on the floor at your feet, aimed at the place, and highlights the container (or the items on the floor) in the arrow colour. On another floor it points
   to the stairs first and shows how many floors up or down. **Go there** walks you to it and opens the loot window on
   it. **Take** picks the item up once it is within reach.
 - **Memory follows the character.** It is kept on the server and forgotten when the character dies.
@@ -26,7 +26,7 @@ Per player, in Settings > Mods:
 
 - **Search**: What I have seen (default), Shared with my faction and safehouse, Opened by anyone, or Everything
   (all of that plus every container and floor around you right now).
-- **Arrow colour**: colour and opacity of the arrows and the marker.
+- **Arrow colour**: colour and opacity of the arrows; the highlight uses the colour.
 
 Sandbox (server):
 

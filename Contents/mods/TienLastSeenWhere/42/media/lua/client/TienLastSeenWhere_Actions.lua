@@ -166,8 +166,8 @@ function Actions.Take(player, place, fullType)
     return true
 end
 
-function Actions.Show(player, place)
-    LSW.Arrow.SetTarget(player:getPlayerNum(), place.x, place.y, place.z)
+function Actions.Show(player, place, fullType)
+    LSW.Arrow.SetTarget(player:getPlayerNum(), place, fullType)
 end
 
 local function openLoot(player, place)
@@ -194,8 +194,8 @@ local function openLoot(player, place)
     ISInventoryPage.renderDirty = true
 end
 
-function Actions.GoThere(player, place)
-    Actions.Show(player, place)
+function Actions.GoThere(player, place, fullType)
+    Actions.Show(player, place, fullType)
     local square = squareOf(place)
     if not square then
         return false

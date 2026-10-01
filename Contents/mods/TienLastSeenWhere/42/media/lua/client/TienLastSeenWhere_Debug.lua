@@ -1,7 +1,8 @@
 require "TienLastSeenWhere_Core"
 require "TienLastSeenWhere_Arrow"
 
-local Arrow = TienLastSeenWhere.Arrow
+local LSW = TienLastSeenWhere
+local Arrow = LSW.Arrow
 
 local function clickedSquare(worldObjects)
     for _, object in ipairs(worldObjects) do
@@ -14,7 +15,13 @@ local function clickedSquare(worldObjects)
 end
 
 local function pointHere(playerNum, square)
-    Arrow.SetTarget(playerNum, square:getX(), square:getY(), square:getZ())
+    Arrow.SetTarget(playerNum, {
+        key = "debug:" .. LSW.SquareKey(square:getX(), square:getY(), square:getZ()),
+        kind = LSW.KIND_FLOOR,
+        x = square:getX(),
+        y = square:getY(),
+        z = square:getZ(),
+    }, nil)
 end
 
 local function onFillWorldObjectContextMenu(playerNum, context, worldObjects, test)
@@ -32,10 +39,6 @@ local function onFillWorldObjectContextMenu(playerNum, context, worldObjects, te
     if Arrow.GetTarget(playerNum) then
         sub:addOption(getText("IGUI_TienLastSeenWhere_Debug_Clear"), playerNum, Arrow.Clear)
     end
-    local floor = sub:addOption(getText("IGUI_TienLastSeenWhere_Debug_DrawFloor"), Arrow.MODE_FLOOR, Arrow.SetMode)
-    sub:setOptionChecked(floor, Arrow.mode == Arrow.MODE_FLOOR)
-    local overlay = sub:addOption(getText("IGUI_TienLastSeenWhere_Debug_DrawOverlay"), Arrow.MODE_OVERLAY, Arrow.SetMode)
-    sub:setOptionChecked(overlay, Arrow.mode == Arrow.MODE_OVERLAY)
 end
 
 Events.OnFillWorldObjectContextMenu.Add(onFillWorldObjectContextMenu)

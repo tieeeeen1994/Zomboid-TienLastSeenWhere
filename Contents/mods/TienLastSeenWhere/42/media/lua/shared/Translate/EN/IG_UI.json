@@ -37,7 +37,5 @@
     "IGUI_TienLastSeenWhere_StopArrow": "Hide arrow",
     "IGUI_TienLastSeenWhere_Debug": "Last Seen Where (debug)",
     "IGUI_TienLastSeenWhere_Debug_PointHere": "Point the arrow here",
-    "IGUI_TienLastSeenWhere_Debug_Clear": "Remove the arrow",
-    "IGUI_TienLastSeenWhere_Debug_DrawFloor": "Draw on the floor",
-    "IGUI_TienLastSeenWhere_Debug_DrawOverlay": "Draw over the screen"
+    "IGUI_TienLastSeenWhere_Debug_Clear": "Remove the arrow"
 }
