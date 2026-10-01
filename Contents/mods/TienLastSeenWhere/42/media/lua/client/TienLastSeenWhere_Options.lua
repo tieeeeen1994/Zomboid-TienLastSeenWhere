@@ -9,6 +9,7 @@ local OPTIONS_ID = "TienLastSeenWhere"
 
 Options.SEARCH_RULE = "searchRule"
 Options.ARROW_COLOUR = "arrowColour"
+Options.ARROW_SIZE = "arrowSize"
 
 local function getOption(id)
     if not PZAPI or not PZAPI.ModOptions then
@@ -40,6 +41,12 @@ function Options.GetArrowColour()
     return { r = colour.r or 1, g = colour.g or 1, b = colour.b or 1, a = math.max(0.15, colour.a or 0.85) }
 end
 
+function Options.GetArrowScale()
+    local option = getOption(Options.ARROW_SIZE)
+    local percent = option and tonumber(option:getValue()) or 100
+    return math.max(0.5, math.min(2, percent / 100))
+end
+
 if PZAPI and PZAPI.ModOptions then
     local options = PZAPI.ModOptions:create(OPTIONS_ID, getText("UI_TienLastSeenWhere_Title"))
 
@@ -55,4 +62,7 @@ if PZAPI and PZAPI.ModOptions then
 
     options:addColorPicker(Options.ARROW_COLOUR, getText("UI_TienLastSeenWhere_ArrowColour"), 1, 0.84, 0.31, 0.85,
         getText("UI_TienLastSeenWhere_ArrowColour_tooltip"))
+
+    options:addSlider(Options.ARROW_SIZE, getText("UI_TienLastSeenWhere_ArrowSize"), 50, 200, 10, 100,
+        getText("UI_TienLastSeenWhere_ArrowSize_tooltip"))
 end

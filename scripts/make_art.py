@@ -141,7 +141,16 @@ def vertical_gradient(size, top, bottom):
 
 
 def grow(mask, px):
-    return mask.filter(ImageFilter.MaxFilter(px * 2 + 1))
+    """Round dilation (a disk, not a square): a square kernel turns the outline round a sharp
+    tip into a flat, boxy end."""
+    out = mask.copy()
+    steps = max(24, px * 6)
+    for i in range(steps):
+        angle = 2 * math.pi * i / steps
+        for radius in (px, px * 0.5):
+            dx, dy = round(math.cos(angle) * radius), round(math.sin(angle) * radius)
+            out = ImageChops.lighter(out, ImageChops.offset(mask, dx, dy))
+    return out
 
 
 def solid(size, colour):
@@ -155,11 +164,12 @@ def sidebar_icon(size, state):
     w, h = size * SS, int(size * 0.75) * SS
     full = (w, h)
     img = Image.new("RGBA", full, (0, 0, 0, 0))
-    u = h / 100.0
     cx = w / 2
-    r = 33 * u
-    cy = 6 * u + r
-    tip = 95 * u
+    stroke = max(SS, round(size * SS / 56))
+    pad = stroke * 2 + SS * 3
+    top, tip = pad, h - pad
+    r = 0.41 * (tip - top)
+    cy = top + r
 
     mask = Image.new("L", full, 0)
     d = ImageDraw.Draw(mask)
@@ -168,7 +178,6 @@ def sidebar_icon(size, state):
     d.polygon([(cx - r * math.cos(angle), cy + r * math.sin(angle)),
                (cx + r * math.cos(angle), cy + r * math.sin(angle)), (cx, tip)], fill=255)
 
-    stroke = max(SS, round(size * SS / 56))
     img.paste(solid(full, (255, 255, 255, 255)), (0, 0), grow(mask, stroke * 2))
     img.paste(solid(full, (12, 12, 12, 255)), (0, 0), grow(mask, stroke))
     if on:

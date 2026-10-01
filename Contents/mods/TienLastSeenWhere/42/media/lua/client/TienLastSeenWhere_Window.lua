@@ -17,6 +17,9 @@ local WIDTH = 420
 local HEIGHT = 420
 local ROW = math.max(22, FONT_HGT_SMALL + 8)
 local ICON = ROW - 4
+local PLACE_ROW = ROW + 8
+local ARROW_COLUMN = math.floor(PLACE_ROW * 1.7)
+local ARROW_X = 10
 local FIND_DELAY_MS = 300
 local SUMMARY_REFRESH_MS = 15000
 local NEARBY = 30
@@ -410,7 +413,8 @@ function Window:rebuildRows()
             })
             for _, place in ipairs(places) do
                 local index = #self.list.items + 1
-                self.list:addItem(placeLabel(place), { row = "place", fullType = match.fullType, place = place })
+                local row = self.list:addItem(placeLabel(place), { row = "place", fullType = match.fullType, place = place })
+                row.height = PLACE_ROW
                 if selectedKey == place.key .. ":" .. match.fullType then
                     self.list.selected = index
                 end
@@ -468,7 +472,7 @@ function Window:onRowDoubleClick(item)
     end
 end
 
-function Window:drawArrow(list, x, y, place, player)
+function Window:drawArrow(list, y, height, place, player)
     local tex = self.arrowTexture
     if not tex then
         return
@@ -477,16 +481,18 @@ function Window:drawArrow(list, x, y, place, player)
     local dy = place.y + 0.5 - player:getY()
     local distance = math.sqrt(dx * dx + dy * dy)
     local c = LSW.Options.GetArrowColour()
-    local cx = list:getAbsoluteX() + x + ICON / 2
-    local cy = list:getAbsoluteY() + list:getYScroll() + y + ROW / 2
+    local localX = ARROW_X + ARROW_COLUMN / 2
+    local localY = y + height / 2
     if distance < 1.5 then
-        list:drawRect(x + ICON / 2 - 3, y + ROW / 2 - 3, 6, 6, 1, c.r, c.g, c.b)
+        list:drawRect(localX - 4, localY - 4, 8, 8, 1, c.r, c.g, c.b)
         return
     end
+    local cx = list:getAbsoluteX() + localX
+    local cy = list:getAbsoluteY() + list:getYScroll() + localY
     local ux, uy = dx / distance, dy / distance
-    local nx, ny = -uy * 0.25, ux * 0.25
+    local nx, ny = -uy * 0.3, ux * 0.3
     local half = 0.5
-    local scale = ICON * 0.75
+    local scale = height * 0.95
     local function project(wx, wy)
         return cx + (wx - wy) * scale, cy + (wx + wy) * scale / 2
     end
@@ -524,8 +530,8 @@ function Window.drawRow(list, y, item, alt)
         list:drawTextRight("x" .. string.format("%d", data.count), right, textY, 0.7, 0.7, 0.7, 1, UIFont.Small)
     elseif data.row == "place" and player then
         local place = data.place
-        window:drawArrow(list, 14, y, place, player)
-        list:drawText(item.text, ICON + 22, textY, 0.9, 0.9, 0.9, 1, UIFont.Small)
+        window:drawArrow(list, y, item.height, place, player)
+        list:drawText(item.text, ARROW_X + ARROW_COLUMN + 6, textY, 0.9, 0.9, 0.9, 1, UIFont.Small)
         local distance = LSW.DistanceTo(player:getX(), player:getY(), place.x + 0.5, place.y + 0.5)
         local parts = {}
         if distance < 1.5 then

@@ -9,9 +9,9 @@ LSW.Arrow = {}
 local Arrow = LSW.Arrow
 
 Arrow.TEXTURE = "media/textures/TienLastSeenWhere_Arrow.png"
-Arrow.START = 0.6
-Arrow.LENGTH = 1.6
-Arrow.HALF_WIDTH = 0.4
+Arrow.START = 0.5
+Arrow.LENGTH = 1.0
+Arrow.HALF_WIDTH = 0.25
 Arrow.ARRIVED = 1.6
 Arrow.ROUTE_MS = 1000
 Arrow.FIND_MS = 1000
@@ -81,7 +81,52 @@ local function objectsOf(target)
     return parent and { parent } or {}
 end
 
+local function shownInLootWindow(playerNum, target, objects)
+    local page = getPlayerLoot(playerNum)
+    if not page or page.isCollapsed or not page:isReallyVisible() then
+        return false
+    end
+    local shown = page.inventoryPane and page.inventoryPane.inventory
+    if not shown then
+        return false
+    end
+    if target.place.kind == LSW.KIND_FLOOR then
+        if shown ~= ISInventoryPage.GetFloorContainer(playerNum) then
+            return false
+        end
+        local player = getSpecificPlayer(playerNum)
+        local square = player and player:getCurrentSquare()
+        return square ~= nil and square:getZ() == target.z
+            and math.abs(square:getX() - target.place.x) <= 1 and math.abs(square:getY() - target.place.y) <= 1
+    end
+    local parent = page:getContainerParent(shown)
+    for _, object in ipairs(objects) do
+        if object == parent then
+            return true
+        end
+    end
+    return false
+end
+
+local function stopHighlighting(playerNum, target, ownedByVanilla)
+    for _, object in ipairs(target.objects) do
+        if object ~= ownedByVanilla then
+            setHighlight(object, playerNum, false)
+        end
+    end
+    target.objects = {}
+    target.found = true
+end
+
 local function refreshHighlight(playerNum, target, now)
+    if target.found then
+        return
+    end
+    if shownInLootWindow(playerNum, target, target.objects) then
+        local page = getPlayerLoot(playerNum)
+        stopHighlighting(playerNum, target, page:getContainerParent(page.inventoryPane.inventory))
+        return
+    end
     if now - (target.findMs or 0) >= Arrow.FIND_MS then
         target.findMs = now
         local found = objectsOf(target)
@@ -165,14 +210,15 @@ local function worldCorners(player, aimX, aimY)
     if distance < Arrow.ARRIVED then
         return nil
     end
+    local scale = LSW.Options.GetArrowScale()
     local ux = dx / distance
     local uy = dy / distance
-    local nx = -uy * Arrow.HALF_WIDTH
-    local ny = ux * Arrow.HALF_WIDTH
+    local nx = -uy * Arrow.HALF_WIDTH * scale
+    local ny = ux * Arrow.HALF_WIDTH * scale
     local tailX = px + ux * Arrow.START
     local tailY = py + uy * Arrow.START
-    local tipX = tailX + ux * Arrow.LENGTH
-    local tipY = tailY + uy * Arrow.LENGTH
+    local tipX = tailX + ux * Arrow.LENGTH * scale
+    local tipY = tailY + uy * Arrow.LENGTH * scale
     return {
         tailX - nx, tailY - ny,
         tipX - nx, tipY - ny,
@@ -216,7 +262,7 @@ local function drawArrow(playerNum, player, target)
     local badge = floorBadge(player, target)
     if badge then
         local bx, by = project(points.tipX, points.tipY)
-        getTextManager():DrawStringCentre(UIFont.Small, bx, by - 24, badge, c.r, c.g, c.b, 1)
+        getTextManager():DrawStringCentre(UIFont.Small, bx, by - 20, badge, c.r, c.g, c.b, 1)
     end
 end
 

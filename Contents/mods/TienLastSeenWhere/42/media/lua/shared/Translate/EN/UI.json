@@ -10,5 +10,7 @@
     "UI_TienLastSeenWhere_SearchRule_Explored": "Opened by anyone",
     "UI_TienLastSeenWhere_SearchRule_Everything": "Everything",
     "UI_TienLastSeenWhere_ArrowColour": "Arrow colour",
-    "UI_TienLastSeenWhere_ArrowColour_tooltip": "Colour and opacity of the arrow on the floor and the small arrows in the search window. The highlight on the place you look for uses the same colour."
+    "UI_TienLastSeenWhere_ArrowColour_tooltip": "Colour and opacity of the arrow on the floor and the small arrows in the search window. The highlight on the place you look for uses the same colour.",
+    "UI_TienLastSeenWhere_ArrowSize": "Arrow size (%%)",
+    "UI_TienLastSeenWhere_ArrowSize_tooltip": "Length and width of the arrow on the floor. 100 is a tile long."
 }

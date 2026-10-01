@@ -91,7 +91,9 @@ listed under "To verify".
   name prefix, then substring, then item tag paths), so names follow the player's language. Matching is a job
   (`window:match:<n>`) that publishes the best 40 so far every 150 ms; the `find` goes 300 ms after the final list
   changes; rows are rebuilt (`rebuildRows`, no matching) on every find part and scope change; the summary is refreshed
-  every 15 s. A spinner (8 dots of `media/ui/circle.png` in the arrow colour) shows while matching, a find is due or the
+  every 15 s. Place rows are taller than item rows (`PLACE_ROW` = row + 8 px) so their iso arrow can be big: drawn in a
+  column 1.7 rows wide, one world unit long at 0.95 of the row height (a diagonal is ~1.3 rows wide), 0.6 wide, with
+  `drawTextureAllPoint` in absolute coordinates. A spinner (8 dots of `media/ui/circle.png` in the arrow colour) shows while matching, a find is due or the
   server has not finished. Scopes: Everywhere, This building (same
   building def), Nearby (30 tiles), On me (live walk of the inventory, no server). Rows: item header (icon, count) and
   places (iso mini arrow, label, distance, floors, age, count). Buttons: Show, Go there, Take (enabled only when the
@@ -111,7 +113,9 @@ listed under "To verify".
   placed from `adminBtn` / the lowest button. Icon `media/ui/Sidebar/<w>/TienLastSeenWhere_Off|On_<w>.png` by the
   Inventory button's width (48/64/80/96/128; vanilla rebuilds the sidebar when its size option changes), On while the
   window is open. Hidden in the tutorial. The icon is our own drawing (`sidebar_icon` in `scripts/make_art.py`: a map
-  pin with an eye, grey Off / orange-red with a blue iris On, outlined like the game's icons: a thin white line outside a black one, no shadow), not
+  pin with an eye, grey Off / orange-red with a blue iris On, outlined like the game's icons: a thin white line outside a black one, no shadow; the pin is sized so the whole outline stays 3 px of the 4x
+  supersampled canvas inside the image, since outline pixels past the edge were cut off in game; the outlines are a
+  round dilation, because a square `MaxFilter` made the outline round the pin's tip flat and boxy), not
   built from vanilla sidebar icons, which would repeat the Inventory and Search buttons right next to it.
 - `client/TienLastSeenWhere_Debug.lua`: with `-debug`, a world context submenu to aim the arrow at a square or remove it.
 - `media/sandbox-options.txt`: `SearchRule` (enum 5, default 1), `FloorRule` (enum 3: in sight / in reach / off),
@@ -121,7 +125,8 @@ listed under "To verify".
 
 - `Arrow.SetTarget(playerNum, place, fullType)` (Show, Go there, double-click; a second call for the same place keeps
   the current target instead of restarting it), `Arrow.Clear`, `Arrow.GetTarget`.
-- Geometry in world tiles from the player's exact position: start 0.6, length 1.6, half width 0.4; the four corners are
+- Geometry in world tiles from the player's exact position: start 0.5, length 1.0, half width 0.25, length and width
+  times the player's "Arrow size" mod option (50-200 %, default 100); the four corners are
   projected with `isoToScreenX/Y` and drawn with `getRenderer():renderPoly` in `OnPreUIDraw`, so it lies flat like a
   floor tile but is drawn over characters and walls. The first version drew it in `OnPostFloorLayerDraw`, which the
   B42 renderer (`FBORenderCell`) never fires: no arrow in game.
@@ -130,7 +135,10 @@ listed under "To verify".
   arrow colour: the container's object, the corpse, the vehicle, a bag's world item (or the object holding it), or for a
   floor place the world items of that type on the square. Objects are looked up again every second (the chunk may load
   later) and the highlight is re-applied every frame (the loot window clears highlights when the mouse leaves its
-  buttons).
+  buttons). Once the loot window shows the place (its selected container's parent is one of our objects, or for a floor
+  place it shows the Floor within reach of the square), the target counts as found: our highlight stops for good and
+  the object vanilla now highlights is left alone. Both writing `setHighlighted`/`setHighlightColor` on the same object
+  in different colours made it flicker.
 - Another floor: `Route.Waypoint` scans 40 tiles for staircases on the player's level (going up: bottom squares) or the level
   below (going down: top squares), picks the lowest (player → entry) + (exit → target), and the arrow aims at the entry,
   re-evaluated every second and when the level changes. No staircase: faded arrow straight at the target. A "1 up" /
