@@ -1,6 +1,6 @@
 # Tien's Last Seen Where
 
-Forgot where you saw that saw? Type an item's name and see every container and floor where your character saw it,
+Forgot where you saw that hammer? Type an item's name and see every container and floor where your character saw it,
 then follow an arrow on the floor back to it.
 
 - **Only what you have seen.** A container counts once you have looked inside it in the loot window. Containers you never

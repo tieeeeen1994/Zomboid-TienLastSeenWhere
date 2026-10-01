@@ -1,7 +1,7 @@
 version=1
 id=3811186259
 title=Tien's Last Seen Where
-description=Forgot where you saw that saw? Type an item's name and see every container and floor where your character saw it, then follow an arrow on the floor back to it.
+description=Forgot where you saw that hammer? Type an item's name and see every container and floor where your character saw it, then follow an arrow on the floor back to it.
 description=
 description=[list]
 description=[*][b]Only what you have seen:[/b] a container counts once you have looked inside it in the loot window. Containers you never opened are never searched. Items on the floor count once they are in sight (small ones only up close, and in the dark only within reach), or when search mode spots them.
