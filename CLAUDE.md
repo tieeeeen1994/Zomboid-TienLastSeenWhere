@@ -116,7 +116,7 @@ listed under "To verify".
   placed from `adminBtn` / the lowest button. Icon `media/ui/Sidebar/<w>/TienLastSeenWhere_Off|On_<w>.png` by the
   Inventory button's width (48/64/80/96/128; vanilla rebuilds the sidebar when its size option changes), On while the
   window is open. Hidden in the tutorial. The icon is our own drawing (`sidebar_icon` in `scripts/make_art.py`: a map
-  pin with an eye, grey Off / orange-red with a blue iris On, outlined like the game's icons: a thin white line outside a black one, no shadow; the pin is sized so the whole outline stays 3 px of the 4x
+  pin with an eye, grey Off / orange-red with a blue iris On, outlined like the game's icons: a thin white line outside a black one, no shadow; the pin fills the height, with the whole outline 2 px of the 4x
   supersampled canvas inside the image, since outline pixels past the edge were cut off in game; the outlines are a
   round dilation, because a square `MaxFilter` made the outline round the pin's tip flat and boxy), not
   built from vanilla sidebar icons, which would repeat the Inventory and Search buttons right next to it.

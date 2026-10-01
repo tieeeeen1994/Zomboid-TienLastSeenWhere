@@ -166,9 +166,9 @@ def sidebar_icon(size, state):
     img = Image.new("RGBA", full, (0, 0, 0, 0))
     cx = w / 2
     stroke = max(SS, round(size * SS / 56))
-    pad = stroke * 2 + SS * 3
+    pad = stroke * 2 + SS * 2
     top, tip = pad, h - pad
-    r = 0.41 * (tip - top)
+    r = 0.43 * (tip - top)
     cy = top + r
 
     mask = Image.new("L", full, 0)
