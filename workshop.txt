@@ -18,4 +18,4 @@ description=Sandbox: one search rule for everyone (default: each player's choice
 description=
 description=Build 42 only. Must be installed on the server and on every client.
 tags=Build 42;Interface;Multiplayer
-visibility=unlisted
+visibility=public
