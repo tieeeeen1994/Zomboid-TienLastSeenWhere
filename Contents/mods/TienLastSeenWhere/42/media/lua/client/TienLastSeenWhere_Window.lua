@@ -503,34 +503,57 @@ function Window:drawArrow(list, y, height, place, player)
     list:drawTextureAllPoint(tex, x1, y1, x2, y2, x3, y3, x4, y4, c.r, c.g, c.b, 1)
 end
 
+-- Rows are clipped by hand instead of trusting the list's stencil: with PZ_Optimization's retained UI
+-- (uiRetained + uiRetainedChildren) the row just above the list was drawn over the scope box. Vanilla's skip test
+-- (`y + yScroll + height < 0`) also draws a row whose bottom is exactly on the top edge, which is where every
+-- mouse-wheel scroll stops. So: rects are cut to the visible band, and text, icons and arrows are drawn only
+-- when they fit in it whole.
 function Window.drawRow(list, y, item, alt)
     local window = list.window
     local data = item.item
-    if (y + list:getYScroll() + item.height < 0) or (y + list:getYScroll() >= list.height) then
+    local viewTop = 1 - list:getYScroll()
+    local viewBottom = list.height - 1 - list:getYScroll()
+    local rowTop = math.max(y, viewTop)
+    local rowBottom = math.min(y + item.height, viewBottom)
+    if rowBottom <= rowTop then
         return y + item.height
     end
-    if list.selected == item.index then
-        list:drawSelection(0, y, list:getWidth(), item.height - 1)
-    elseif list.mouseoverselected == item.index and list:isMouseOver() and not list:isMouseOverScrollBar() then
-        list:drawMouseOverHighlight(0, y, list:getWidth(), item.height - 1)
+    local function fits(top, bottom)
+        return top >= viewTop and bottom <= viewBottom
+    end
+    local fillBottom = math.min(y + item.height - 1, viewBottom)
+    if fillBottom > rowTop then
+        if list.selected == item.index then
+            list:drawSelection(0, rowTop, list:getWidth(), fillBottom - rowTop)
+        elseif list.mouseoverselected == item.index and list:isMouseOver() and not list:isMouseOverScrollBar() then
+            list:drawMouseOverHighlight(0, rowTop, list:getWidth(), fillBottom - rowTop)
+        end
     end
     local textY = y + (item.height - FONT_HGT_SMALL) / 2
+    local textFits = fits(textY, textY + FONT_HGT_SMALL)
     local right = list:getWidth() - PAD - (list.vscroll and list.vscroll:getWidth() or 0)
     local player = window:player()
     if data.row == "item" then
-        list:drawRect(0, y, list:getWidth(), item.height, 0.25, 0.2, 0.2, 0.2)
-        if data.info.script then
+        list:drawRect(0, rowTop, list:getWidth(), rowBottom - rowTop, 0.25, 0.2, 0.2, 0.2)
+        if data.info.script and fits(y + 2, y + 2 + ICON) then
             list:drawScriptItemIcon(data.info.script, 4, y + 2, 1, ICON, ICON)
         end
-        list:drawText(item.text, ICON + 10, textY, 1, 1, 1, 1, UIFont.Small)
-        local count = data.waiting and getText("IGUI_TienLastSeenWhere_Looking") or ("x" .. string.format("%d", data.total or 0))
-        list:drawTextRight(count, right, textY, 0.8, 0.8, 0.8, 1, UIFont.Small)
+        if textFits then
+            list:drawText(item.text, ICON + 10, textY, 1, 1, 1, 1, UIFont.Small)
+            local count = data.waiting and getText("IGUI_TienLastSeenWhere_Looking") or ("x" .. string.format("%d", data.total or 0))
+            list:drawTextRight(count, right, textY, 0.8, 0.8, 0.8, 1, UIFont.Small)
+        end
     elseif data.row == "held" then
-        list:drawText(item.text, ICON + 18, textY, 0.85, 0.85, 0.85, 1, UIFont.Small)
-        list:drawTextRight("x" .. string.format("%d", data.count), right, textY, 0.7, 0.7, 0.7, 1, UIFont.Small)
-    elseif data.row == "place" and player then
+        if textFits then
+            list:drawText(item.text, ICON + 18, textY, 0.85, 0.85, 0.85, 1, UIFont.Small)
+            list:drawTextRight("x" .. string.format("%d", data.count), right, textY, 0.7, 0.7, 0.7, 1, UIFont.Small)
+        end
+    elseif data.row == "place" and player and textFits then
         local place = data.place
-        window:drawArrow(list, y, item.height, place, player)
+        local arrowHalf = item.height * 0.4
+        if fits(y + item.height / 2 - arrowHalf, y + item.height / 2 + arrowHalf) then
+            window:drawArrow(list, y, item.height, place, player)
+        end
         list:drawText(item.text, ARROW_X + ARROW_COLUMN + 6, textY, 0.9, 0.9, 0.9, 1, UIFont.Small)
         local distance = LSW.DistanceTo(player:getX(), player:getY(), place.x + 0.5, place.y + 0.5)
         local parts = {}

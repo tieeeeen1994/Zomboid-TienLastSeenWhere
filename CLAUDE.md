@@ -98,6 +98,11 @@ listed under "To verify".
   building def), Nearby (30 tiles), On me (live walk of the inventory, no server). Rows: item header (icon, count) and
   places (iso mini arrow, label, distance, floors, age, count). Buttons: Show, Go there, Take (enabled only when the
   container is a loot window button or the floor square is in reach), Hide arrow. Double-click = Show.
+  `drawRow` clips by hand (rects cut to the visible band, text/icon/arrow only when whole inside): the list's stencil
+  did not clip in game with PZ_Optimization's retained UI on (`uiRetained`/`uiRetainedChildren`, which replays a
+  child's recorded draw and stencil commands; a list whose only custom drawing is `doDrawItem` is not seen as modded),
+  and vanilla's skip test `y + yScroll + height < 0` draws the row ending exactly on the top edge, where every wheel
+  scroll stops, so that row showed over the scope box.
 - `client/TienLastSeenWhere_Actions.lua`: finding the client's copy of a place, Take (`ISInventoryTransferUtil` from a
   container, `ISGrabItemAction` from the floor), Go there (walk to the square or a free adjacent one, then open the loot
   window on it when the walk ends within 1.8 tiles, 60 s timeout).
