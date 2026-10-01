@@ -48,21 +48,21 @@ function Options.GetArrowScale()
 end
 
 if PZAPI and PZAPI.ModOptions then
-    local options = PZAPI.ModOptions:create(OPTIONS_ID, getText("UI_TienLastSeenWhere_Title"))
+    local options = PZAPI.ModOptions:create(OPTIONS_ID, "UI_TienLastSeenWhere_Title")
 
     options:addDescription("UI_TienLastSeenWhere_Description")
     options:addSeparator()
 
-    local rule = options:addComboBox(Options.SEARCH_RULE, getText("UI_TienLastSeenWhere_SearchRule"),
-        getText("UI_TienLastSeenWhere_SearchRule_tooltip"))
+    local rule = options:addComboBox(Options.SEARCH_RULE, "UI_TienLastSeenWhere_SearchRule",
+        "UI_TienLastSeenWhere_SearchRule_tooltip")
     rule:addItem("UI_TienLastSeenWhere_SearchRule_Mine", true)
     rule:addItem("UI_TienLastSeenWhere_SearchRule_Shared", false)
     rule:addItem("UI_TienLastSeenWhere_SearchRule_Explored", false)
     rule:addItem("UI_TienLastSeenWhere_SearchRule_Everything", false)
 
-    options:addColorPicker(Options.ARROW_COLOUR, getText("UI_TienLastSeenWhere_ArrowColour"), 1, 0.84, 0.31, 0.85,
-        getText("UI_TienLastSeenWhere_ArrowColour_tooltip"))
+    options:addColorPicker(Options.ARROW_COLOUR, "UI_TienLastSeenWhere_ArrowColour", 1, 0.84, 0.31, 0.85,
+        "UI_TienLastSeenWhere_ArrowColour_tooltip")
 
-    options:addSlider(Options.ARROW_SIZE, getText("UI_TienLastSeenWhere_ArrowSize"), 50, 200, 10, 100,
-        getText("UI_TienLastSeenWhere_ArrowSize_tooltip"))
+    options:addSlider(Options.ARROW_SIZE, "UI_TienLastSeenWhere_ArrowSize", 50, 200, 10, 100,
+        "UI_TienLastSeenWhere_ArrowSize_tooltip")
 end

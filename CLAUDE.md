@@ -103,7 +103,10 @@ listed under "To verify".
   window on it when the walk ends within 1.8 tiles, 60 s timeout).
 - `client/TienLastSeenWhere_Arrow.lua` + `client/TienLastSeenWhere_Route.lua`: the floor arrow (see below).
 - `client/TienLastSeenWhere_Options.lua`: per-player `PZAPI.ModOptions`: Search rule combo (index 1..4 = rules 2..5),
-  arrow colour picker (`addColorPicker`, with alpha).
+  arrow colour picker (`addColorPicker`, with alpha), arrow size slider (%). Names and tooltips are passed as
+  translation **keys**: vanilla `MainOptions:addModOptionsPanel` runs `getText` on every name/tooltip itself, and
+  `getText` of an already translated "Arrow size (%)" (not a key) crashes the options screen (see ZomboidFixesB42's
+  CLAUDE.md, ModOptions).
 - `client/TienLastSeenWhere_Keys.lua`: vanilla key binding `LSW Find Item`, unbound by default (the user's choice; the
   sidebar button is the main way in).
 - `client/TienLastSeenWhere_Sidebar.lua`: sidebar button right under Inventory (player 0 only, like every vanilla
