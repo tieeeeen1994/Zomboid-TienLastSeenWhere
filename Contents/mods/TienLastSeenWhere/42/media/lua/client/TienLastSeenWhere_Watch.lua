@@ -79,6 +79,7 @@ function Watch.Locate(player, container)
             y = square:getY(),
             z = square:getZ(),
             index = bodyIndex(square, parent),
+            bodyId = LSW.BodyId(parent),
         }
     end
     local sprite = parent:getSprite()

@@ -83,9 +83,7 @@ function Actions.FindContainer(place)
         return nil
     end
     if place.kind == LSW.KIND_BODY then
-        local index = tonumber(string.match(place.key, ":(%d+)$"))
-        local bodies = square:getDeadBodys()
-        local body = index and index < bodies:size() and bodies:get(index) or nil
+        local body = LSW.FindBody(square, place.key)
         return body and body:getContainer() or nil
     end
     if place.kind == LSW.KIND_BAG then

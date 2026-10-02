@@ -3,7 +3,7 @@ VERSION = 1,
 option TienLastSeenWhere.SearchRule
 {
     type = enum,
-    numValues = 5,
+    numValues = 4,
     default = 1,
     page = TienLastSeenWhere,
     translation = TienLastSeenWhere_SearchRule,
@@ -38,4 +38,32 @@ option TienLastSeenWhere.ForgetAfterDays
     default = 0,
     page = TienLastSeenWhere,
     translation = TienLastSeenWhere_ForgetAfterDays,
+}
+
+option TienLastSeenWhere.Privacy
+{
+    type = boolean,
+    default = true,
+    page = TienLastSeenWhere,
+    translation = TienLastSeenWhere_Privacy,
+}
+
+option TienLastSeenWhere.MemoryRefresh
+{
+    type = enum,
+    numValues = 2,
+    default = 1,
+    page = TienLastSeenWhere,
+    translation = TienLastSeenWhere_MemoryRefresh,
+    valueTranslation = TienLastSeenWhere_MemoryRefresh,
+}
+
+option TienLastSeenWhere.FoundByName
+{
+    type = enum,
+    numValues = 2,
+    default = 1,
+    page = TienLastSeenWhere,
+    translation = TienLastSeenWhere_FoundByName,
+    valueTranslation = TienLastSeenWhere_FoundByName,
 }

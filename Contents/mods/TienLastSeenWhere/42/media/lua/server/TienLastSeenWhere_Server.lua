@@ -2,10 +2,12 @@ if isClient() then return end
 
 require "TienLastSeenWhere_Core"
 require "TienLastSeenWhere_Store"
+require "TienLastSeenWhere_Privacy"
 require "TienLastSeenWhere_Jobs"
 
 local LSW = TienLastSeenWhere
 local Store = LSW.Store
+local Privacy = LSW.Privacy
 local Jobs = LSW.Jobs
 
 LSW.Server = {}
@@ -15,15 +17,19 @@ local Server = LSW.Server
 Server.CONTAINER_REACH = 10
 Server.FLOOR_REACH = 45
 Server.MAX_SQUARES = 300
-Server.LIVE_CACHE_MS = 5000
 Server.FLUSH_MS = 300
 Server.TYPES_PER_MESSAGE = 8
 Server.INGEST_LIMIT = 4000
 Server.SUMMARY_CACHE_MS = 10000
 Server.FIND_GAP_MS = 250
 Server.BUSY_AFTER_MS = 3000
+Server.GONE_CHECK_MS = 2000
+Server.GONE_REACH = 1
+Server.GONE_STILL_MS = 10000
+Server.PLACES_LIMIT = 300
+Server.PLACES_PER_MESSAGE = 100
+Server.MARK_KEY_LENGTH = 300
 
-local liveCache = {}
 local ingest = {}
 local ingestHead = 1
 local ingestDropped = 0
@@ -31,6 +37,8 @@ local summaryRuns = {}
 local summaryCache = {}
 local findPending = {}
 local lastFindMs = {}
+local lastGoneCheckMs = 0
+local goneChecked = {}
 
 function Server.IsBusy()
     return Jobs.IsStrained() or Jobs.Stats().oldestMs > Server.BUSY_AFTER_MS
@@ -40,15 +48,31 @@ local function near(player, x, y, reach)
     return math.abs(player:getX() - x) <= reach and math.abs(player:getY() - y) <= reach
 end
 
+local function noteMarked(ids, item, fullType)
+    if not Privacy.IsItemMarked(item:getID()) then
+        return ids
+    end
+    ids = ids or {}
+    local list = ids[fullType]
+    if not list then
+        list = {}
+        ids[fullType] = list
+    end
+    list[#list + 1] = item:getID()
+    return ids
+end
+
 local function countItems(container)
     local items = {}
+    local ids = nil
     local list = container:getItems()
     for i = 0, list:size() - 1 do
         local item = list:get(i)
         local fullType = item:getFullType()
         items[fullType] = (items[fullType] or 0) + 1
+        ids = noteMarked(ids, item, fullType)
     end
-    return items
+    return items, ids
 end
 
 local function isEmpty(items)
@@ -71,7 +95,11 @@ local function vehicleKey(vehicle, partId)
     return "v:" .. tostring(vehicle:getSqlId()) .. ":" .. tostring(partId)
 end
 
-local function bodyKey(x, y, z, index)
+local function bodyKey(x, y, z, body, index)
+    local id = LSW.BodyId(body)
+    if id then
+        return "d:" .. LSW.SquareKey(x, y, z) .. ":#" .. string.format("%d", id)
+    end
     return "d:" .. LSW.SquareKey(x, y, z) .. ":" .. string.format("%d", index)
 end
 
@@ -83,7 +111,7 @@ local function floorKey(x, y, z)
     return "f:" .. LSW.SquareKey(x, y, z)
 end
 
-local function place(key, kind, square, x, y, z, placeType, items)
+local function place(key, kind, square, x, y, z, placeType, items, ids)
     return {
         key = key,
         kind = kind,
@@ -95,6 +123,7 @@ local function place(key, kind, square, x, y, z, placeType, items)
         building = LSW.BuildingKey(square),
         t = LSW.Now(),
         items = items,
+        ids = ids,
     }
 end
 
@@ -155,14 +184,22 @@ local function resolveBag(player, args)
     local parent = args.parent
     local item = nil
     local square = nil
+    local parents = nil
     if parent.kind == LSW.KIND_FLOOR then
         square = getCell():getGridSquare(tonumber(parent.x), tonumber(parent.y), tonumber(parent.z))
         item = square and findItemOnSquare(square, id)
+        if square then
+            parents = { floorKey(square:getX(), square:getY(), square:getZ()) }
+        end
     else
         local resolved = resolve(player, parent)
         if resolved then
             item = resolved.container:getItemWithID(id)
             square = resolved.square
+            parents = { resolved.key }
+            for _, key in ipairs(resolved.parents or {}) do
+                parents[#parents + 1] = key
+            end
         end
     end
     if not item or not square or not instanceof(item, "InventoryContainer") then
@@ -174,6 +211,7 @@ local function resolveBag(player, args)
         key = bagKey(item),
         kind = LSW.KIND_BAG,
         type = item:getFullType(),
+        parents = parents,
     }
 end
 
@@ -207,12 +245,25 @@ resolve = function(player, args)
     end
     if kind == LSW.KIND_BODY then
         local index = tonumber(args.index) or -1
-        local body = findBody(square, index)
+        local body = nil
+        local id = tonumber(args.bodyId)
+        if id then
+            body = LSW.FindBody(square, ":#" .. string.format("%d", id))
+        end
+        if not body then
+            body = findBody(square, index)
+        end
         local container = body and body:getContainer()
         if not container then
             return nil
         end
-        return { container = container, square = square, key = bodyKey(x, y, z, index), kind = kind, type = "corpse" }
+        return {
+            container = container,
+            square = square,
+            key = bodyKey(x, y, z, body, index),
+            kind = kind,
+            type = "corpse",
+        }
     end
     if kind == LSW.KIND_OBJECT then
         local object, container = findObjectContainer(square, args)
@@ -231,6 +282,8 @@ resolve = function(player, args)
 end
 
 local function remember(player, entry)
+    entry.by = Store.KeyOf(player)
+    Privacy.NoteSighting(player, entry)
     Store.Put(Store.ForPlayer(player), entry)
     Store.Put(Store.World(), entry)
 end
@@ -249,18 +302,21 @@ local function onSeenContainer(player, args)
     if not near(player, square:getX(), square:getY(), Server.CONTAINER_REACH) then
         return
     end
-    local items = countItems(resolved.container)
+    local items, ids = countItems(resolved.container)
     if isEmpty(items) then
         forgetPlace(player, resolved.key)
         return
     end
-    remember(player, place(resolved.key, resolved.kind, square, square:getX(), square:getY(), square:getZ(),
-        resolved.type, items))
+    local entry = place(resolved.key, resolved.kind, square, square:getX(), square:getY(), square:getZ(),
+        resolved.type, items, ids)
+    entry.parents = resolved.parents
+    remember(player, entry)
 end
 
 local function floorItems(square)
     local items = {}
     local small = {}
+    local ids = nil
     local objects = square:getWorldObjects()
     for i = 0, objects:size() - 1 do
         local item = objects:get(i):getItem()
@@ -271,9 +327,10 @@ local function floorItems(square)
             else
                 items[fullType] = (items[fullType] or 0) + 1
             end
+            ids = noteMarked(ids, item, fullType)
         end
     end
-    return items, small
+    return items, small, ids
 end
 
 local function isSmallType(fullType)
@@ -287,7 +344,7 @@ local function seeSquare(player, record, x, y, z, close)
         return
     end
     local key = floorKey(x, y, z)
-    local items, small = floorItems(square)
+    local items, small, ids = floorItems(square)
     local smallVisible = close or LSW.DistanceTo(player:getX(), player:getY(), x + 0.5, y + 0.5)
         <= LSW.GetSmallItemDistance()
     if smallVisible then
@@ -299,6 +356,17 @@ local function seeSquare(player, record, x, y, z, close)
         for fullType, count in pairs(previous and previous.items or {}) do
             if items[fullType] == nil and isSmallType(fullType) then
                 items[fullType] = count
+                if previous.ids and previous.ids[fullType] then
+                    ids = ids or {}
+                    ids[fullType] = previous.ids[fullType]
+                end
+            end
+        end
+        if ids then
+            for fullType in pairs(ids) do
+                if items[fullType] == nil then
+                    ids[fullType] = nil
+                end
             end
         end
     end
@@ -306,7 +374,7 @@ local function seeSquare(player, record, x, y, z, close)
         forgetPlace(player, key)
         return
     end
-    remember(player, place(key, LSW.KIND_FLOOR, square, x, y, z, nil, items))
+    remember(player, place(key, LSW.KIND_FLOOR, square, x, y, z, nil, items, ids))
 end
 
 local function onSeenSquares(player, args)
@@ -329,102 +397,225 @@ local function onSeenSquares(player, args)
     end
 end
 
-local function usernamesShared(username)
-    local names = { [username] = true }
-    local faction = Faction.getPlayerFaction(username)
-    if faction then
-        names[faction:getOwner()] = true
-        local players = faction:getPlayers()
-        for i = 0, players:size() - 1 do
-            names[players:get(i)] = true
+local function objectKeysOn(square)
+    local keys = {}
+    local x, y, z = square:getX(), square:getY(), square:getZ()
+    local objects = square:getObjects()
+    for i = 0, objects:size() - 1 do
+        local object = objects:get(i)
+        for c = 0, object:getContainerCount() - 1 do
+            keys[objectKey(x, y, z, spriteName(object), object:getContainerByIndex(c):getType())] = true
         end
     end
-    local safehouses = SafeHouse.getSafehouseList()
-    for i = 0, safehouses:size() - 1 do
-        local safehouse = safehouses:get(i)
-        local players = safehouse:getPlayers()
-        if safehouse:getOwner() == username or players:contains(username) then
-            names[safehouse:getOwner()] = true
-            for j = 0, players:size() - 1 do
-                names[players:get(j)] = true
+    return keys
+end
+
+local function bagOnSquare(square, id)
+    local worldObjects = square:getWorldObjects()
+    for i = 0, worldObjects:size() - 1 do
+        local item = worldObjects:get(i):getItem()
+        if item then
+            if item:getID() == id then
+                return true
+            end
+            if instanceof(item, "InventoryContainer") and item:getInventory():getItemWithIDRecursiv(id) then
+                return true
             end
         end
     end
-    return names
+    local objects = square:getObjects()
+    for i = 0, objects:size() - 1 do
+        local object = objects:get(i)
+        for c = 0, object:getContainerCount() - 1 do
+            if object:getContainerByIndex(c):getItemWithIDRecursiv(id) then
+                return true
+            end
+        end
+    end
+    local bodies = square:getDeadBodys()
+    for i = 0, bodies:size() - 1 do
+        local container = bodies:get(i):getContainer()
+        if container and container:getItemWithIDRecursiv(id) then
+            return true
+        end
+    end
+    return false
 end
 
-local function liveScan(player, everything)
-    local cacheKey = player:getUsername() .. (everything and ":all" or ":explored")
-    local cached = liveCache[cacheKey]
-    local now = getTimestampMs()
-    if cached and now - cached.ms < Server.LIVE_CACHE_MS then
-        return cached.places
+local function isGone(square, entry, objectKeys)
+    local kind = entry.kind
+    if kind == LSW.KIND_OBJECT then
+        return not objectKeys()[entry.key]
     end
-    local places = {}
+    if kind == LSW.KIND_BODY then
+        return LSW.FindBody(square, entry.key) == nil
+    end
+    if kind == LSW.KIND_FLOOR then
+        return square:getWorldObjects():size() == 0
+    end
+    if kind == LSW.KIND_BAG then
+        local parents = entry.parents
+        local top = parents and parents[#parents]
+        local via = top and string.sub(top, 1, 1)
+        if via ~= LSW.KIND_FLOOR and via ~= LSW.KIND_OBJECT and via ~= LSW.KIND_BODY then
+            return false
+        end
+        local id = tonumber(string.match(entry.key, "^b:(%-?%d+)$"))
+        return id ~= nil and not bagOnSquare(square, id)
+    end
+    return false
+end
+
+local function forgetGoneOn(record, square, objectKeys, touch)
+    local keys = Store.KeysAt(record, square:getX(), square:getY(), square:getZ())
+    if not keys then
+        return
+    end
+    local gone = {}
+    local still = {}
+    for key in pairs(keys) do
+        local entry = record.places[key]
+        if entry and isGone(square, entry, objectKeys) then
+            gone[#gone + 1] = key
+        elseif entry and touch and entry.kind ~= LSW.KIND_FLOOR then
+            still[#still + 1] = key
+        end
+    end
+    for _, key in ipairs(gone) do
+        Store.Remove(record, key)
+    end
+    for _, key in ipairs(still) do
+        Store.Touch(record, key)
+    end
+end
+
+local function checkGone(player, now)
+    local current = player:getCurrentSquare()
+    if not current then
+        return
+    end
+    local who = Store.KeyOf(player)
+    local spot = LSW.SquareKey(current:getX(), current:getY(), current:getZ())
+    local last = goneChecked[who]
+    if last and last.spot == spot and now - last.ms < Server.GONE_STILL_MS then
+        return
+    end
+    goneChecked[who] = { spot = spot, ms = now }
+    local mine = Store.ForPlayer(player)
+    local world = Store.World()
     local cell = getCell()
-    local px, py, pz = math.floor(player:getX()), math.floor(player:getY()), math.floor(player:getZ())
-    local radius = LSW.LIVE_RADIUS
-    for z = pz - LSW.LIVE_LEVELS, pz + LSW.LIVE_LEVELS do
-        for x = px - radius, px + radius do
-            for y = py - radius, py + radius do
-                Jobs.Step()
-                local square = cell:getGridSquare(x, y, z)
-                if square then
-                    local objects = square:getObjects()
-                    for i = 0, objects:size() - 1 do
-                        local object = objects:get(i)
-                        for c = 0, object:getContainerCount() - 1 do
-                            local container = object:getContainerByIndex(c)
-                            if everything or container:isExplored() then
-                                local items = countItems(container)
-                                if not isEmpty(items) then
-                                    local key = objectKey(x, y, z, spriteName(object), container:getType())
-                                    places[key] = place(key, LSW.KIND_OBJECT, square, x, y, z, container:getType(), items)
-                                end
-                            end
+    local reach = Server.GONE_REACH
+    local touch = LSW.GetMemoryRefresh() == LSW.REFRESH_NEARBY and LSW.GetForgetAfterDays() > 0
+    local z = current:getZ()
+    for x = current:getX() - reach, current:getX() + reach do
+        for y = current:getY() - reach, current:getY() + reach do
+            Jobs.Step()
+            local square = cell:getGridSquare(x, y, z)
+            if square then
+                local cached = nil
+                local function objectKeys()
+                    if not cached then
+                        cached = objectKeysOn(square)
+                    end
+                    return cached
+                end
+                if not Store.IsLoading(mine) then
+                    forgetGoneOn(mine, square, objectKeys, touch)
+                end
+                if not Store.IsLoading(world) then
+                    forgetGoneOn(world, square, objectKeys)
+                end
+                local marked = Privacy.PlaceKeysAt(x, y, z)
+                if marked then
+                    local gone = {}
+                    for key in pairs(marked) do
+                        if not objectKeys()[key] then
+                            gone[#gone + 1] = key
                         end
                     end
-                    if everything then
-                        local items, small = floorItems(square)
-                        for fullType, count in pairs(small) do
-                            items[fullType] = count
-                        end
-                        if not isEmpty(items) then
-                            local key = floorKey(x, y, z)
-                            places[key] = place(key, LSW.KIND_FLOOR, square, x, y, z, nil, items)
-                        end
+                    for _, key in ipairs(gone) do
+                        Privacy.ForgetPlace(key)
                     end
                 end
             end
         end
     end
-    liveCache[cacheKey] = { ms = getTimestampMs(), places = places }
-    return places
 end
 
-local function recordSource(record)
+local function playersHere()
+    local players = {}
+    if isServer() then
+        local online = getOnlinePlayers()
+        for i = 0, online:size() - 1 do
+            players[#players + 1] = online:get(i)
+        end
+    else
+        for i = 0, getNumActivePlayers() - 1 do
+            local player = getSpecificPlayer(i)
+            if player then
+                players[#players + 1] = player
+            end
+        end
+    end
+    return players
+end
+
+local function recordSource(record, own)
     Store.WaitLoaded(record)
-    return { places = record.places, order = record.order }
+    return { places = record.places, order = record.order, own = own }
 end
 
 local function sources(player, rule)
     local list = {}
+    local mine = Store.KeyOf(player)
     if rule == LSW.RULE_SHARED and isServer() then
-        for username in pairs(usernamesShared(player:getUsername())) do
-            list[#list + 1] = recordSource(Store.Get(username))
+        list[#list + 1] = recordSource(Store.ForPlayer(player), true)
+        for username in pairs(Privacy.SharedUsernames(player:getUsername())) do
+            if username ~= mine then
+                local source = recordSource(Store.Get(username), false)
+                source.author = username
+                list[#list + 1] = source
+            end
         end
         return list
     end
-    if rule == LSW.RULE_EXPLORED or rule == LSW.RULE_EVERYTHING then
-        list[#list + 1] = recordSource(Store.World())
-        list[#list + 1] = { places = liveScan(player, rule == LSW.RULE_EVERYTHING) }
+    if rule == LSW.RULE_EXPLORED then
+        list[#list + 1] = recordSource(Store.ForPlayer(player), true)
+        local world = recordSource(Store.World(), false)
+        world.world = true
+        list[#list + 1] = world
         return list
     end
-    list[#list + 1] = recordSource(Store.ForPlayer(player))
+    list[#list + 1] = recordSource(Store.ForPlayer(player), true)
     return list
 end
 
-local function eachPlace(list, fn)
+local function eachPlace(list, viewer, fn)
+    local ownPlaces = {}
+    for _, source in ipairs(list) do
+        if source.own then
+            ownPlaces = source.places
+        end
+    end
+    local function visit(source, entry)
+        if source.own or not viewer then
+            fn(entry, entry.items)
+            return
+        end
+        local author = source.author
+        if source.world then
+            author = entry.by
+        end
+        local floors = {}
+        local own = ownPlaces[entry.key]
+        if own then
+            floors[#floors + 1] = own.items
+        end
+        local items = viewer:visibleItems(entry, author, floors)
+        if items then
+            fn(entry, items)
+        end
+    end
     for _, source in ipairs(list) do
         if source.order then
             local order = source.order
@@ -432,14 +623,14 @@ local function eachPlace(list, fn)
             while i <= #order do
                 local entry = source.places[order[i]]
                 if entry then
-                    fn(entry)
+                    visit(source, entry)
                 end
                 i = i + 1
                 Jobs.Step()
             end
         else
             for _, entry in pairs(source.places) do
-                fn(entry)
+                visit(source, entry)
                 Jobs.Step()
             end
         end
@@ -475,15 +666,25 @@ local function sendSummary(player, args, rule, totals)
     flush(true)
 end
 
-local function summaryTotals(player, rule)
+local function summaryTotals(player, rule, seeAll)
     local totals = {}
-    local seen = {}
-    eachPlace(sources(player, rule), function(entry)
-        if not seen[entry.key] then
-            seen[entry.key] = true
-            for fullType, count in pairs(entry.items) do
-                totals[fullType] = (totals[fullType] or 0) + count
+    local chosen = {}
+    eachPlace(sources(player, rule), Privacy.Viewer(player, seeAll), function(entry, items)
+        local current = chosen[entry.key]
+        if current and current.t >= entry.t then
+            return
+        end
+        if current then
+            for fullType, count in pairs(current.items) do
+                totals[fullType] = totals[fullType] - count
+                if totals[fullType] <= 0 then
+                    totals[fullType] = nil
+                end
             end
+        end
+        chosen[entry.key] = { t = entry.t, items = items }
+        for fullType, count in pairs(items) do
+            totals[fullType] = (totals[fullType] or 0) + count
         end
     end)
     return totals
@@ -492,14 +693,14 @@ end
 local function summaryVersion(player, rule)
     if rule == LSW.RULE_SHARED and isServer() then
         local parts = {}
-        for username in pairs(usernamesShared(player:getUsername())) do
+        for username in pairs(Privacy.SharedUsernames(player:getUsername())) do
             parts[#parts + 1] = username .. "=" .. string.format("%d", Store.Get(username).version)
         end
         table.sort(parts)
         return table.concat(parts, ";")
     end
-    if rule == LSW.RULE_EXPLORED or rule == LSW.RULE_EVERYTHING then
-        return nil
+    if rule == LSW.RULE_EXPLORED then
+        return string.format("%d;%d", Store.ForPlayer(player).version, Store.World().version)
     end
     return string.format("%d", Store.ForPlayer(player).version)
 end
@@ -508,8 +709,10 @@ local function onSummary(player, args)
     local rule = LSW.ResolveRule(args.rule)
     local name = "summary:" .. player:getUsername() .. ":" .. tostring(args.playerNum)
     local version = summaryVersion(player, rule)
+    local seeAll = args.seeAll == true
+    local flags = (seeAll and "all:" or "") .. string.format("%d", Privacy.Version())
     local cached = summaryCache[name]
-    if cached and cached.rule == rule then
+    if cached and cached.rule == rule and cached.flags == flags then
         local fresh
         if version then
             fresh = cached.version == version
@@ -522,15 +725,15 @@ local function onSummary(player, args)
         end
     end
     local run = summaryRuns[name]
-    if run and run.rule == rule and Jobs.IsRunning(name) then
+    if run and run.rule == rule and run.flags == flags and Jobs.IsRunning(name) then
         run.args = args
         return
     end
-    run = { args = args, rule = rule }
+    run = { args = args, rule = rule, flags = flags }
     summaryRuns[name] = run
     Jobs.Start(name, function()
-        local totals = summaryTotals(player, rule)
-        summaryCache[name] = { rule = rule, version = version, ms = getTimestampMs(), totals = totals }
+        local totals = summaryTotals(player, rule, seeAll)
+        summaryCache[name] = { rule = rule, flags = flags, version = version, ms = getTimestampMs(), totals = totals }
         summaryRuns[name] = nil
         sendSummary(player, run.args, rule, totals)
     end)
@@ -573,11 +776,33 @@ local function resultOf(entry, count, vehicles)
     return result
 end
 
-local function nearest(player, found, vehicles)
+local function finderOf(player)
+    local name = Store.KeyOf(player)
+    local group = isServer() and Privacy.SharedUsernames(player:getUsername()) or nil
+    return function(result, entry, fullType)
+        if LSW.IsPrivacyEnabled() and Privacy.OwnLevel(name, entry, fullType) then
+            result.private = true
+        end
+        local by = entry.by
+        if not by then
+            return
+        end
+        if by == name then
+            result.byMe = true
+        elseif not group or group[by] then
+            result.by = Store.NameOf(by)
+        else
+            result.bySomeone = true
+        end
+    end
+end
+
+local function nearest(player, found, vehicles, finder, fullType)
     local px, py = player:getX(), player:getY()
     local list = {}
     for _, hit in pairs(found) do
         local result = resultOf(hit.entry, hit.count, vehicles)
+        finder(result, hit.entry, fullType)
         result.d = LSW.DistanceTo(px, py, result.x + 0.5, result.y + 0.5)
         list[#list + 1] = result
     end
@@ -598,6 +823,7 @@ local function findJob(player, args, rule, wanted)
     local part = 0
     local lastFlushMs = getTimestampMs()
     local vehicles = vehiclesBySqlId()
+    local finder = finderOf(player)
 
     local function send(types, last)
         local results = {}
@@ -615,7 +841,7 @@ local function findJob(player, args, rule, wanted)
             return
         end
         for i, fullType in ipairs(pending) do
-            results[fullType] = nearest(player, found[fullType], vehicles)
+            results[fullType] = nearest(player, found[fullType], vehicles, finder, fullType)
             count = count + 1
             if count >= Server.TYPES_PER_MESSAGE or i == #pending then
                 part = part + 1
@@ -634,12 +860,23 @@ local function findJob(player, args, rule, wanted)
         end
     end
 
-    eachPlace(sources(player, rule), function(entry)
-        for fullType, n in pairs(entry.items) do
-            local hits = found[fullType]
-            if hits then
-                local current = hits[entry.key]
-                if not current or entry.t > current.entry.t then
+    local chosen = {}
+    eachPlace(sources(player, rule), Privacy.Viewer(player, args.seeAll == true), function(entry, items)
+        local current = chosen[entry.key]
+        if not current or entry.t > current.entry.t then
+            if current then
+                for fullType in pairs(current.items) do
+                    local hits = found[fullType]
+                    if hits and hits[entry.key] then
+                        hits[entry.key] = nil
+                        changed[fullType] = true
+                    end
+                end
+            end
+            chosen[entry.key] = { entry = entry, items = items }
+            for fullType, n in pairs(items) do
+                local hits = found[fullType]
+                if hits then
                     hits[entry.key] = { entry = entry, count = n }
                     changed[fullType] = true
                 end
@@ -684,6 +921,262 @@ local function onFind(player, args)
     startFind(name, player, args, rule, wanted)
 end
 
+local function markInfo(mark, record)
+    local info = {
+        kind = mark.kind,
+        id = mark.id,
+        level = mark.level,
+        placeKind = mark.placeKind,
+        x = mark.x,
+        y = mark.y,
+        z = mark.z,
+        type = mark.type,
+        room = mark.room,
+        fullType = mark.fullType,
+        t = mark.t,
+        exposed = mark.exposedT,
+        exposedBy = Store.NameOf(mark.exposedBy),
+        fresh = mark.exposedT ~= nil and (mark.ackT == nil or mark.ackT < mark.exposedT),
+    }
+    local entry = mark.kind == LSW.MARK_PLACE and record and record.places[mark.id]
+    if entry then
+        info.x, info.y, info.z = entry.x, entry.y, entry.z
+        info.room = entry.room
+        info.seen = entry.t
+    end
+    return info
+end
+
+local function sendPrivacy(player, args, reason)
+    local record = Store.ForPlayer(player)
+    if Store.IsLoading(record) then
+        record = nil
+    end
+    local marks = {}
+    for _, mark in ipairs(Privacy.MarksOf(Store.KeyOf(player))) do
+        marks[#marks + 1] = markInfo(mark, record)
+    end
+    LSW.ToClient(player, LSW.REPLY_PRIVACY, {
+        request = args.request,
+        playerNum = args.playerNum,
+        enabled = LSW.IsPrivacyEnabled(),
+        group = isServer(),
+        canSeeAll = Privacy.CanSeeAll(player),
+        marks = marks,
+        reason = reason,
+    })
+end
+
+local function onPrivacy(player, args)
+    if args.ack == true then
+        Privacy.Acknowledge(Store.KeyOf(player))
+    end
+    sendPrivacy(player, args, nil)
+end
+
+local function itemOnSquare(square, id)
+    local worldObjects = square:getWorldObjects()
+    for i = 0, worldObjects:size() - 1 do
+        local item = worldObjects:get(i):getItem()
+        if item then
+            if item:getID() == id then
+                return item
+            end
+            if instanceof(item, "InventoryContainer") then
+                local inner = item:getInventory():getItemWithIDRecursiv(id)
+                if inner then
+                    return inner
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function itemInReach(player, id, args)
+    local item = player:getInventory():getItemWithIDRecursiv(id)
+    if item then
+        return item, nil
+    end
+    if type(args.locator) == "table" then
+        local resolved = resolve(player, args.locator)
+        local square = resolved and resolved.square
+        if square and near(player, square:getX(), square:getY(), Server.CONTAINER_REACH) then
+            item = resolved.container:getItemWithIDRecursiv(id)
+            if item then
+                return item, { locator = args.locator }
+            end
+        end
+    end
+    local current = player:getCurrentSquare()
+    if not current then
+        return nil, nil
+    end
+    local cell = getCell()
+    for dx = -1, 1 do
+        for dy = -1, 1 do
+            local square = cell:getGridSquare(current:getX() + dx, current:getY() + dy, current:getZ())
+            item = square and itemOnSquare(square, id)
+            if item then
+                return item, { square = square }
+            end
+        end
+    end
+    return nil, nil
+end
+
+local function placeMark(player, key, level)
+    if type(key) ~= "string" or string.len(key) > Server.MARK_KEY_LENGTH then
+        return "invalid"
+    end
+    local prefix = string.sub(key, 1, 2)
+    if prefix ~= "o:" and prefix ~= "v:" and prefix ~= "b:" then
+        return "invalid"
+    end
+    local owner = Store.KeyOf(player)
+    if level == LSW.PRIVATE_NONE then
+        Privacy.Set(owner, { kind = LSW.MARK_PLACE, id = key }, level)
+        return nil
+    end
+    local record = Store.ForPlayer(player)
+    if Store.IsLoading(record) then
+        return "busy"
+    end
+    local entry = record.places[key]
+    if not entry then
+        return "unknown"
+    end
+    local ok, reason = Privacy.Set(owner, {
+        kind = LSW.MARK_PLACE,
+        id = key,
+        placeKind = entry.kind,
+        x = entry.x,
+        y = entry.y,
+        z = entry.z,
+        type = entry.type,
+        room = entry.room,
+    }, level)
+    return not ok and reason or nil
+end
+
+local function itemMark(player, args, level)
+    local id = tonumber(args.id)
+    if not id then
+        return "invalid"
+    end
+    local owner = Store.KeyOf(player)
+    if level == LSW.PRIVATE_NONE then
+        Privacy.Set(owner, { kind = LSW.MARK_ITEM, id = string.format("%d", id) }, level)
+        return nil
+    end
+    local item, where = itemInReach(player, id, args)
+    if not item then
+        return "unknown"
+    end
+    local square = player:getCurrentSquare()
+    local ok, reason
+    if instanceof(item, "InventoryContainer") then
+        ok, reason = Privacy.Set(owner, {
+            kind = LSW.MARK_PLACE,
+            id = bagKey(item),
+            placeKind = LSW.KIND_BAG,
+            x = square and square:getX(),
+            y = square and square:getY(),
+            z = square and square:getZ(),
+            type = item:getFullType(),
+            room = LSW.RoomName(square),
+        }, level)
+    else
+        ok, reason = Privacy.Set(owner, {
+            kind = LSW.MARK_ITEM,
+            id = string.format("%d", id),
+            fullType = item:getFullType(),
+        }, level)
+    end
+    if not ok then
+        return reason
+    end
+    if where and where.locator then
+        onSeenContainer(player, where.locator)
+    elseif where and where.square and LSW.GetFloorRule() ~= LSW.FLOOR_OFF then
+        local record = Store.ForPlayer(player)
+        if not Store.IsLoading(record) then
+            seeSquare(player, record, where.square:getX(), where.square:getY(), where.square:getZ(), true)
+        end
+    end
+    return nil
+end
+
+local function onPrivacySet(player, args)
+    if not LSW.IsPrivacyEnabled() then
+        sendPrivacy(player, args, "off")
+        return
+    end
+    local level = tonumber(args.level)
+    if level ~= LSW.PRIVATE_NONE and level ~= LSW.PRIVATE_ME and level ~= LSW.PRIVATE_GROUP then
+        sendPrivacy(player, args, "invalid")
+        return
+    end
+    if level == LSW.PRIVATE_GROUP and not isServer() then
+        level = LSW.PRIVATE_ME
+    end
+    local reason
+    if args.kind == LSW.MARK_PLACE then
+        reason = placeMark(player, args.key, level)
+    elseif args.kind == LSW.MARK_ITEM then
+        reason = itemMark(player, args, level)
+    else
+        reason = "invalid"
+    end
+    sendPrivacy(player, args, reason)
+end
+
+local function onPlaces(player, args)
+    local name = "places:" .. player:getUsername() .. ":" .. tostring(args.playerNum)
+    Jobs.Start(name, function()
+        local record = Store.ForPlayer(player)
+        Store.WaitLoaded(record)
+        local vehicles = vehiclesBySqlId()
+        local px, py = player:getX(), player:getY()
+        local list = {}
+        local order = record.order
+        local listed = {}
+        local i = 1
+        while i <= #order do
+            local key = order[i]
+            local entry = record.places[key]
+            if entry and not listed[key] and (entry.kind == LSW.KIND_OBJECT or entry.kind == LSW.KIND_VEHICLE
+                or entry.kind == LSW.KIND_BAG) then
+                listed[key] = true
+                local result = resultOf(entry, nil, vehicles)
+                result.d = LSW.DistanceTo(px, py, result.x + 0.5, result.y + 0.5)
+                list[#list + 1] = result
+            end
+            i = i + 1
+            Jobs.Step()
+        end
+        table.sort(list, function(a, b) return a.d < b.d end)
+        local chunk = {}
+        local part = 0
+        local total = math.min(#list, Server.PLACES_LIMIT)
+        for n = 1, total do
+            chunk[#chunk + 1] = list[n]
+            if #chunk >= Server.PLACES_PER_MESSAGE or n == total then
+                part = part + 1
+                LSW.ToClient(player, LSW.REPLY_PLACES, {
+                    request = args.request, playerNum = args.playerNum, part = part, last = n == total, places = chunk,
+                })
+                chunk = {}
+            end
+        end
+        if total == 0 then
+            LSW.ToClient(player, LSW.REPLY_PLACES, {
+                request = args.request, playerNum = args.playerNum, part = 1, last = true, places = {},
+            })
+        end
+    end)
+end
+
 local function runIngest()
     while ingestHead <= #ingest do
         local entry = ingest[ingestHead]
@@ -716,6 +1209,17 @@ local function onTick()
             startFind(name, pending.player, pending.args, pending.rule, pending.wanted)
         end
     end
+    if now - lastGoneCheckMs >= Server.GONE_CHECK_MS and not Jobs.IsRunning("gone") then
+        lastGoneCheckMs = now
+        local players = playersHere()
+        Jobs.Start("gone", function()
+            for _, player in ipairs(players) do
+                if not player:isDead() then
+                    checkGone(player, now)
+                end
+            end
+        end)
+    end
 end
 
 local function onEveryTenMinutes()
@@ -730,6 +1234,11 @@ local function onEveryTenMinutes()
             summaryCache[name] = nil
         end
     end
+    for who, last in pairs(goneChecked) do
+        if now - last.ms > Server.GONE_STILL_MS * 6 then
+            goneChecked[who] = nil
+        end
+    end
 end
 
 local handlers = {
@@ -737,6 +1246,9 @@ local handlers = {
     [LSW.CMD_SEEN_SQUARES] = queueIngest(onSeenSquares),
     [LSW.CMD_SUMMARY] = onSummary,
     [LSW.CMD_FIND] = onFind,
+    [LSW.CMD_PRIVACY] = onPrivacy,
+    [LSW.CMD_PRIVACY_SET] = onPrivacySet,
+    [LSW.CMD_PLACES] = onPlaces,
 }
 
 function Server.Handle(player, command, args)

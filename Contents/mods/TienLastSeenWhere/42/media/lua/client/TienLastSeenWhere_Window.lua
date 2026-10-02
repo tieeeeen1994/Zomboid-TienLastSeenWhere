@@ -1,4 +1,6 @@
 require "ISUI/ISCollapsableWindow"
+require "ISUI/ISResizeableButton"
+require "ISUI/ISLayoutManager"
 require "TienLastSeenWhere_Core"
 require "TienLastSeenWhere_Options"
 require "TienLastSeenWhere_Client"
@@ -13,8 +15,8 @@ LSW.Window = Window
 
 local FONT_HGT_SMALL = getTextManager():getFontHeight(UIFont.Small)
 local PAD = 8
-local WIDTH = 420
-local HEIGHT = 420
+local WIDTH = 720
+local HEIGHT = 540
 local ROW = math.max(22, FONT_HGT_SMALL + 8)
 local ICON = ROW - 4
 local PLACE_ROW = ROW + 8
@@ -28,11 +30,22 @@ local PUBLISH_MS = 150
 local SPINNER_DOTS = 8
 local SPINNER_RADIUS = 6
 local SPINNER_DOT = 4
+local HEADER_HEIGHT = FONT_HGT_SMALL + 4
+local BY_WIDTH = 120
+local WHERE_WIDTH = 160
 
 Window.SCOPE_ALL = 1
 Window.SCOPE_BUILDING = 2
 Window.SCOPE_NEARBY = 3
 Window.SCOPE_ON_ME = 4
+
+Window.TAB_FIND = "find"
+Window.TAB_PRIVACY = "privacy"
+
+Window.PAD = PAD
+Window.ROW = ROW
+Window.ICON = ICON
+Window.FONT_HGT_SMALL = FONT_HGT_SMALL
 
 Window.instances = {}
 
@@ -131,23 +144,111 @@ local function floorText(player, place)
     return getText(diff == -1 and "IGUI_TienLastSeenWhere_FloorDown" or "IGUI_TienLastSeenWhere_FloorsDown", count)
 end
 
-local function ruleText(rule)
-    local keys = {
-        [LSW.RULE_MINE] = "UI_TienLastSeenWhere_SearchRule_Mine",
-        [LSW.RULE_SHARED] = "UI_TienLastSeenWhere_SearchRule_Shared",
-        [LSW.RULE_EXPLORED] = "UI_TienLastSeenWhere_SearchRule_Explored",
-        [LSW.RULE_EVERYTHING] = "UI_TienLastSeenWhere_SearchRule_Everything",
+local countWidth = nil
+
+local COLUMN_MIN = { place = 80, where = 60, seen = 50, by = 50 }
+local RESIZABLE = { "where", "seen", "by" }
+local LEFT_OF = { where = "place", seen = "where", by = "seen" }
+
+local function defaultWidths()
+    local tm = getTextManager()
+    return {
+        where = WHERE_WIDTH,
+        seen = math.max(tm:MeasureStringX(UIFont.Small, getText("IGUI_TienLastSeenWhere_DaysAgo", "999")),
+            tm:MeasureStringX(UIFont.Small, getText("IGUI_TienLastSeenWhere_ColumnSeen"))) + PAD * 2,
+        by = BY_WIDTH,
     }
-    return getText(keys[rule] or keys[LSW.RULE_MINE])
 end
+
+local function getCountWidth()
+    if not countWidth then
+        local tm = getTextManager()
+        countWidth = math.max(tm:MeasureStringX(UIFont.Small, "x9999"),
+            tm:MeasureStringX(UIFont.Small, getText("IGUI_TienLastSeenWhere_ColumnCount"))) + PAD * 2
+    end
+    return countWidth
+end
+
+function Window:columnEdges()
+    local list = self.list
+    local right = list:getWidth() - PAD - (list.vscroll and list.vscroll:getWidth() or 0)
+    local w = self.colWidths
+    local count = right + PAD - getCountWidth()
+    local by = count - w.by
+    local seen = by - w.seen
+    local where = seen - w.where
+    return { place = 0, where = where, seen = seen, by = by, count = count, right = right }
+end
+
+function Window:columns(right)
+    local edges = self:columnEdges()
+    return {
+        where = edges.where + 4, whereWidth = edges.seen - edges.where - 8,
+        seen = edges.seen + 4, seenWidth = edges.by - edges.seen - 8,
+        by = edges.by + 4, byWidth = edges.count - edges.by - 8,
+        count = right,
+        labelRight = edges.where - 4,
+    }
+end
+
+function Window.Fit(text, width)
+    local tm = getTextManager()
+    if width <= 0 then
+        return ""
+    end
+    if tm:MeasureStringX(UIFont.Small, text) <= width then
+        return text
+    end
+    local cut = string.len(text)
+    while cut > 0 and tm:MeasureStringX(UIFont.Small, string.sub(text, 1, cut) .. "...") > width do
+        cut = cut - 1
+    end
+    return string.sub(text, 1, cut) .. "..."
+end
+
+local function fitCached(row, field, text, width)
+    local cache = row.fitCache
+    if not cache then
+        cache = {}
+        row.fitCache = cache
+    end
+    local key = field .. ":" .. string.format("%d", width) .. ":" .. text
+    local fitted = cache[key]
+    if not fitted then
+        fitted = Window.Fit(text, width)
+        cache[key] = fitted
+    end
+    return fitted
+end
+
+local function finderText(place)
+    local text = "-"
+    if place.byMe then
+        text = getText("IGUI_TienLastSeenWhere_ByMe")
+    elseif place.by then
+        text = place.by
+    elseif place.bySomeone then
+        text = getText("IGUI_TienLastSeenWhere_BySomeone")
+    end
+    if place.private then
+        text = getText("IGUI_TienLastSeenWhere_PrivateSuffix", text)
+    end
+    return text
+end
+
+Window.ScriptInfo = scriptInfo
+Window.Score = score
+Window.PlaceLabel = placeLabel
+Window.AgeText = ageText
 
 function Window:new(x, y, width, height, playerNum)
     local o = ISCollapsableWindow.new(self, x, y, width, height)
     o.playerNum = playerNum
     o.title = getText("IGUI_TienLastSeenWhere_Title")
-    o.minimumWidth = 340
-    o.minimumHeight = 260
+    o.minimumWidth = 520
+    o.minimumHeight = 300
     o.scope = Window.SCOPE_ALL
+    o.tab = Window.TAB_FIND
     o.matches = {}
     o.findDueMs = nil
     o.summaryMs = 0
@@ -165,6 +266,28 @@ function Window:createChildren()
 
     local top = self:titleBarHeight() + PAD
     local entryHeight = FONT_HGT_SMALL + 6
+
+    self.tabButtons = {}
+    local tabX = PAD
+    for _, spec in ipairs({
+        { Window.TAB_FIND, "IGUI_TienLastSeenWhere_TabFind" },
+        { Window.TAB_PRIVACY, "IGUI_TienLastSeenWhere_TabPrivacy", "IGUI_TienLastSeenWhere_TabPrivacyFound" },
+    }) do
+        local text = getText(spec[2])
+        local width = getTextManager():MeasureStringX(UIFont.Small, text) + 24
+        if spec[3] then
+            width = math.max(width, getTextManager():MeasureStringX(UIFont.Small, getText(spec[3])) + 24)
+        end
+        local button = ISButton:new(tabX, top, width, entryHeight, text, self, Window.onTabButton)
+        button.internal = spec[1]
+        button:initialise()
+        button:instantiate()
+        self:addChild(button)
+        self.tabButtons[spec[1]] = button
+        tabX = tabX + width + PAD / 2
+    end
+    top = top + entryHeight + PAD
+    self.contentTop = top
 
     self.entry = ISTextEntryBox:new("", PAD, top, self.width - PAD * 2, entryHeight)
     self.entry.anchorRight = true
@@ -187,10 +310,29 @@ function Window:createChildren()
     self.scopeCombo.selected = 1
     self.ruleY = comboTop
 
+    local ruleWidth = 0
+    for _, key in ipairs({ "UI_TienLastSeenWhere_SearchRule_Mine", "UI_TienLastSeenWhere_SearchRule_Shared",
+        "UI_TienLastSeenWhere_SearchRule_Explored" }) do
+        ruleWidth = math.max(ruleWidth, getTextManager():MeasureStringX(UIFont.Small, getText(key)))
+    end
+    ruleWidth = ruleWidth + 40
+    self.ruleCombo = ISComboBox:new(self.width - PAD - ruleWidth, comboTop, ruleWidth, entryHeight, self,
+        Window.onRuleChange)
+    self.ruleCombo.anchorLeft = false
+    self.ruleCombo.anchorRight = true
+    self.ruleCombo:initialise()
+    self:addChild(self.ruleCombo)
+    self.ruleCombo:addOptionWithData(getText("UI_TienLastSeenWhere_SearchRule_Mine"), LSW.RULE_MINE)
+    if isClient() then
+        self.ruleCombo:addOptionWithData(getText("UI_TienLastSeenWhere_SearchRule_Shared"), LSW.RULE_SHARED)
+    end
+    self.ruleCombo:addOptionWithData(getText("UI_TienLastSeenWhere_SearchRule_Explored"), LSW.RULE_EXPLORED)
+
     local buttonHeight = FONT_HGT_SMALL + 8
     local bottom = self.height - self:resizeWidgetHeight() - PAD
     local buttonTop = bottom - buttonHeight
-    local listTop = self.scopeCombo:getBottom() + PAD
+    self.headerY = self.scopeCombo:getBottom() + PAD
+    local listTop = self.headerY + HEADER_HEIGHT
     self.list = ISScrollingListBox:new(PAD, listTop, self.width - PAD * 2, buttonTop - PAD - listTop)
     self.list.anchorRight = true
     self.list.anchorBottom = true
@@ -203,6 +345,33 @@ function Window:createChildren()
     self.list.doDrawItem = Window.drawRow
     self.list:setOnMouseDoubleClick(self, Window.onRowDoubleClick)
     self:addChild(self.list)
+
+    self.colWidths = self.colWidths or defaultWidths()
+    self.headers = {}
+    for _, spec in ipairs({
+        { "place", "IGUI_TienLastSeenWhere_ColumnPlace" },
+        { "where", "IGUI_TienLastSeenWhere_ColumnWhere" },
+        { "seen", "IGUI_TienLastSeenWhere_ColumnSeen" },
+        { "by", "IGUI_TienLastSeenWhere_ColumnBy" },
+        { "count", "IGUI_TienLastSeenWhere_ColumnCount" },
+    }) do
+        local header = ISResizableButton:new(0, self.headerY, 10, HEADER_HEIGHT, getText(spec[2]), self,
+            Window.onHeaderClick)
+        header.internal = spec[1]
+        header:initialise()
+        header.borderColor.a = 0.2
+        header.minimumWidth = COLUMN_MIN[spec[1]] or 10
+        if LEFT_OF[spec[1]] then
+            header.resizeLeft = true
+            header.onresize = { Window.onHeaderResize, self, header }
+        else
+            header.onMouseMove = ISButton.onMouseMove
+            header.onMouseMoveOutside = ISButton.onMouseMoveOutside
+        end
+        self:addChild(header)
+        self.headers[spec[1]] = header
+    end
+    self:layoutHeaders()
 
     self.buttons = {}
     local labels = {
@@ -224,6 +393,137 @@ function Window:createChildren()
         self.buttons[spec[1]] = button
         x = x + width + PAD / 2
     end
+
+    self.findWidgets = { self.entry, self.scopeCombo, self.ruleCombo, self.list }
+    for _, header in pairs(self.headers) do
+        self.findWidgets[#self.findWidgets + 1] = header
+    end
+    for _, button in pairs(self.buttons) do
+        self.findWidgets[#self.findWidgets + 1] = button
+    end
+    self.privacyWidgets = {}
+    if self.createPrivacyChildren then
+        self:createPrivacyChildren(top, entryHeight, buttonTop, buttonHeight)
+    end
+    self:setTab(Window.TAB_FIND)
+end
+
+function Window:layoutHeaders()
+    if not self.headers then
+        return
+    end
+    local edges = self:columnEdges()
+    local x0 = self.list:getX()
+    local order = { "place", "where", "seen", "by", "count" }
+    for i, name in ipairs(order) do
+        local header = self.headers[name]
+        local left = edges[name]
+        local right = order[i + 1] and edges[order[i + 1]] or self.list:getWidth()
+        header:setX(x0 + left)
+        header:setWidth(math.max(1, right - left + 1))
+        header:setY(self.headerY)
+    end
+    for _, name in ipairs(RESIZABLE) do
+        local header = self.headers[name]
+        local neighbour = LEFT_OF[name]
+        local room = edges[name] - edges[neighbour] - COLUMN_MIN[neighbour]
+        header.maximumWidth = self.colWidths[name] + math.max(0, room)
+    end
+end
+
+function Window:onHeaderResize(header)
+    local name = header.internal
+    local delta = header:getWidth() - self.colWidths[name]
+    self.colWidths[name] = header:getWidth()
+    local neighbour = LEFT_OF[name]
+    if neighbour ~= "place" then
+        self.colWidths[neighbour] = math.max(COLUMN_MIN[neighbour], self.colWidths[neighbour] - delta)
+    end
+    self:layoutHeaders()
+end
+
+function Window:onHeaderClick(header)
+    if self.sortBy == header.internal then
+        self.sortDesc = not self.sortDesc
+    else
+        self.sortBy = header.internal
+        self.sortDesc = false
+    end
+    self:rebuildRows()
+end
+
+function Window:SaveLayout(name, layout)
+    ISLayoutManager.DefaultSaveWindow(self, layout)
+    layout.visible = nil
+    layout.colWhere = tostring(self.colWidths.where)
+    layout.colSeen = tostring(self.colWidths.seen)
+    layout.colBy = tostring(self.colWidths.by)
+    layout.sortBy = self.sortBy or "where"
+    layout.sortDesc = tostring(self.sortDesc == true)
+end
+
+function Window:RestoreLayout(name, layout)
+    local copy = {}
+    for k, v in pairs(layout) do
+        if k ~= "visible" then
+            copy[k] = v
+        end
+    end
+    ISLayoutManager.DefaultRestoreWindow(self, copy)
+    for key, field in pairs({ colWhere = "where", colSeen = "seen", colBy = "by" }) do
+        local width = tonumber(layout[key])
+        if width then
+            self.colWidths[field] = math.max(COLUMN_MIN[field], width)
+        end
+    end
+    if layout.sortBy and COLUMN_MIN[layout.sortBy] or layout.sortBy == "count" then
+        self.sortBy = layout.sortBy
+    end
+    self.sortDesc = layout.sortDesc == "true"
+    self:layoutHeaders()
+end
+
+function Window:privacyAvailable()
+    return self.createPrivacyChildren ~= nil and LSW.IsPrivacyUseful()
+end
+
+function Window:setTab(tab)
+    if tab == Window.TAB_PRIVACY and not self:privacyAvailable() then
+        tab = Window.TAB_FIND
+    end
+    if tab ~= Window.TAB_PRIVACY then
+        self.freshKeys = nil
+    end
+    self.tab = tab
+    for _, widget in ipairs(self.findWidgets or {}) do
+        widget:setVisible(tab == Window.TAB_FIND)
+    end
+    for _, widget in ipairs(self.privacyWidgets or {}) do
+        widget:setVisible(tab == Window.TAB_PRIVACY)
+    end
+    for name, button in pairs(self.tabButtons or {}) do
+        if name == tab then
+            button.backgroundColor = { r = 0.35, g = 0.35, b = 0.35, a = 1 }
+            button.borderColor = { r = 1, g = 1, b = 1, a = 0.6 }
+        else
+            button.backgroundColor = { r = 0, g = 0, b = 0, a = 0.6 }
+            button.borderColor = { r = 0.7, g = 0.7, b = 0.7, a = 0.4 }
+        end
+    end
+    if self.tabButtons and self.tabButtons[Window.TAB_PRIVACY] then
+        self.tabButtons[Window.TAB_PRIVACY]:setVisible(self:privacyAvailable())
+    end
+    if tab == Window.TAB_PRIVACY then
+        self:onPrivacyShown()
+    elseif self.entry and self:isVisible() then
+        self.entry:focus()
+    end
+end
+
+function Window:onTabButton(button)
+    if button.internal ~= self.tab then
+        self:setTab(button.internal)
+    end
 end
 
 function Window:onTextChange()
@@ -237,6 +537,26 @@ function Window:onScopeChange()
         self:refreshResults()
     else
         self:rebuildRows()
+    end
+end
+
+function Window:onRuleChange()
+    local rule = self.ruleCombo:getOptionData(self.ruleCombo.selected)
+    if rule and LSW.GetSandboxRule() == LSW.RULE_PLAYER then
+        LSW.Options.SetSearchRule(rule)
+        self:refreshSearch()
+    end
+end
+
+function Window:syncRuleCombo()
+    local forced = LSW.GetSandboxRule() ~= LSW.RULE_PLAYER
+    local rule = LSW.Options.GetEffectiveRule()
+    if rule == LSW.RULE_SHARED and not isClient() then
+        rule = LSW.RULE_MINE
+    end
+    self.ruleCombo.disabled = forced
+    if self.ruleCombo:getOptionData(self.ruleCombo.selected) ~= rule and not self.ruleCombo.expanded then
+        self.ruleCombo:selectData(rule)
     end
 end
 
@@ -383,6 +703,38 @@ function Window:refreshResults()
     self:startMatching(query)
 end
 
+function Window:sortPlaces(places, player)
+    local px, py = player:getX(), player:getY()
+    local sortBy = self.sortBy or "where"
+    local keys = {}
+    for _, place in ipairs(places) do
+        local key
+        if sortBy == "place" then
+            key = string.lower(placeLabel(place))
+        elseif sortBy == "seen" then
+            key = -(place.t or 0)
+        elseif sortBy == "by" then
+            key = string.lower(finderText(place))
+        elseif sortBy == "count" then
+            key = -(place.count or 0)
+        else
+            key = LSW.DistanceTo(px, py, place.x + 0.5, place.y + 0.5)
+        end
+        keys[place] = key
+    end
+    local desc = self.sortDesc == true
+    table.sort(places, function(a, b)
+        local ka, kb = keys[a], keys[b]
+        if ka == kb then
+            return LSW.DistanceTo(px, py, a.x, a.y) < LSW.DistanceTo(px, py, b.x, b.y)
+        end
+        if desc then
+            return ka > kb
+        end
+        return ka < kb
+    end)
+end
+
 function Window:rebuildRows()
     local player = self:player()
     if not self.list or not player or self.scope == Window.SCOPE_ON_ME then
@@ -399,10 +751,7 @@ function Window:rebuildRows()
                 places[#places + 1] = place
             end
         end
-        table.sort(places, function(a, b)
-            return LSW.DistanceTo(player:getX(), player:getY(), a.x, a.y)
-                < LSW.DistanceTo(player:getX(), player:getY(), b.x, b.y)
-        end)
+        self:sortPlaces(places, player)
         if find[match.fullType] == nil or #places > 0 then
             self.list:addItem(match.info.name, {
                 row = "item",
@@ -437,7 +786,17 @@ function Window:updateButtons()
     self.buttons.stop:setEnable(LSW.Arrow.GetTarget(self.playerNum) ~= nil)
 end
 
+function Window:releaseKeyboard()
+    if self.entry then
+        self.entry:unfocus()
+    end
+    if self.pEntry then
+        self.pEntry:unfocus()
+    end
+end
+
 function Window:onShow()
+    self:releaseKeyboard()
     local row = self:selectedRow()
     if row and row.place then
         LSW.Actions.Show(self:player(), row.place, row.fullType)
@@ -446,6 +805,7 @@ function Window:onShow()
 end
 
 function Window:onGoThere()
+    self:releaseKeyboard()
     local row = self:selectedRow()
     if row and row.place then
         LSW.Actions.GoThere(self:player(), row.place, row.fullType)
@@ -454,6 +814,7 @@ function Window:onGoThere()
 end
 
 function Window:onTake()
+    self:releaseKeyboard()
     local row = self:selectedRow()
     if row and row.place then
         LSW.Actions.Take(self:player(), row.place, row.fullType)
@@ -466,6 +827,7 @@ function Window:onStopArrow()
 end
 
 function Window:onRowDoubleClick(item)
+    self:releaseKeyboard()
     if item and item.place then
         LSW.Actions.Show(self:player(), item.place, item.fullType)
         self:updateButtons()
@@ -554,18 +916,34 @@ function Window.drawRow(list, y, item, alt)
         if fits(y + item.height / 2 - arrowHalf, y + item.height / 2 + arrowHalf) then
             window:drawArrow(list, y, item.height, place, player)
         end
-        list:drawText(item.text, ARROW_X + ARROW_COLUMN + 6, textY, 0.9, 0.9, 0.9, 1, UIFont.Small)
+        local columns = window:columns(right)
+        local labelX = ARROW_X + ARROW_COLUMN + 6
+        list:drawText(fitCached(item, "label", item.text, columns.labelRight - labelX), labelX, textY,
+            0.9, 0.9, 0.9, 1, UIFont.Small)
         local distance = LSW.DistanceTo(player:getX(), player:getY(), place.x + 0.5, place.y + 0.5)
-        local parts = {}
+        local where
         if distance < 1.5 then
-            parts[#parts + 1] = getText("IGUI_TienLastSeenWhere_Here")
+            where = getText("IGUI_TienLastSeenWhere_Here")
         else
-            parts[#parts + 1] = getText("IGUI_TienLastSeenWhere_Tiles", string.format("%d", math.floor(distance + 0.5)))
+            where = getText("IGUI_TienLastSeenWhere_Tiles", string.format("%d", math.floor(distance + 0.5)))
         end
-        parts[#parts + 1] = floorText(player, place)
-        parts[#parts + 1] = ageText(place.t)
-        parts[#parts + 1] = "x" .. string.format("%d", place.count or 0)
-        list:drawTextRight(table.concat(parts, "  "), right, textY, 0.7, 0.7, 0.7, 1, UIFont.Small)
+        local floors = floorText(player, place)
+        if floors then
+            where = where .. ", " .. floors
+        end
+        list:drawText(fitCached(item, "where", where, columns.whereWidth), columns.where, textY,
+            0.7, 0.7, 0.7, 1, UIFont.Small)
+        list:drawText(ageText(place.t), columns.seen, textY, 0.7, 0.7, 0.7, 1, UIFont.Small)
+        local finder = finderText(place)
+        local fr, fg, fb = 0.7, 0.7, 0.7
+        if place.byMe then
+            fr, fg, fb = 0.55, 0.55, 0.55
+        elseif place.by then
+            fr, fg, fb = 0.5, 0.75, 1
+        end
+        list:drawText(fitCached(item, "by", finder, columns.byWidth), columns.by, textY, fr, fg, fb, 1, UIFont.Small)
+        list:drawTextRight("x" .. string.format("%d", place.count or 0), columns.count, textY,
+            0.7, 0.7, 0.7, 1, UIFont.Small)
     end
     return y + item.height
 end
@@ -585,6 +963,22 @@ function Window:prerender()
         self.summaryMs = now
         LSW.Client.RequestSummary(player)
     end
+    if self.tab == Window.TAB_PRIVACY and not self:privacyAvailable() then
+        self:setTab(Window.TAB_FIND)
+    end
+    if self.tabButtons[Window.TAB_PRIVACY] then
+        self.tabButtons[Window.TAB_PRIVACY]:setVisible(self:privacyAvailable())
+    end
+    if self.tab == Window.TAB_PRIVACY then
+        self:prerenderPrivacy(now)
+        return
+    end
+    self:syncRuleCombo()
+    local showHeaders = self.scope ~= Window.SCOPE_ON_ME
+    for _, header in pairs(self.headers) do
+        header:setVisible(showHeaders)
+    end
+    self:layoutHeaders()
     if self.lastSelected ~= self.list.selected or now - (self.buttonsMs or 0) > BUTTONS_REFRESH_MS then
         self.lastSelected = self.list.selected
         self.buttonsMs = now
@@ -597,19 +991,29 @@ function Window:render()
     if self.isCollapsed or not self.list then
         return
     end
-    local rule = LSW.Options.GetEffectiveRule()
-    local text = ruleText(rule)
-    if LSW.GetSandboxRule() ~= LSW.RULE_PLAYER then
-        text = getText("IGUI_TienLastSeenWhere_RuleForced", text)
+    if self.tab == Window.TAB_PRIVACY then
+        self:renderPrivacy()
+        return
     end
-    self:drawTextRight(text, self.width - PAD, self.ruleY + 3, 0.7, 0.7, 0.7, 1, UIFont.Small)
+    local textY = self.ruleY + 3
+    local x = self.ruleCombo:getX() - PAD
+    local function note(key, r, g, b)
+        local text = getText(key)
+        self:drawTextRight(text, x, textY, r, g, b, 1, UIFont.Small)
+        x = x - getTextManager():MeasureStringX(UIFont.Small, text) - PAD
+    end
+    if LSW.GetSandboxRule() ~= LSW.RULE_PLAYER then
+        note("IGUI_TienLastSeenWhere_RuleServer", 0.7, 0.7, 0.7)
+    end
+    if LSW.Client.GetSeeAll(self.playerNum) then
+        note("IGUI_TienLastSeenWhere_PrivateShown", 1, 0.6, 0.35)
+    end
     if self:isBusy() then
-        local width = getTextManager():MeasureStringX(UIFont.Small, text)
-        local spinnerX = self.width - PAD - width - PAD - SPINNER_RADIUS - SPINNER_DOT
-        self:drawSpinner(spinnerX, self.ruleY + 3 + FONT_HGT_SMALL / 2)
+        local spinnerX = x - SPINNER_RADIUS - SPINNER_DOT / 2
+        self:drawSpinner(spinnerX, textY + FONT_HGT_SMALL / 2)
+        x = spinnerX - SPINNER_RADIUS - PAD
         if LSW.Client.IsServerBusy(self.playerNum) then
-            self:drawTextRight(getText("IGUI_TienLastSeenWhere_ServerBusy"), spinnerX - SPINNER_RADIUS - PAD,
-                self.ruleY + 3, 1, 0.75, 0.4, 1, UIFont.Small)
+            note("IGUI_TienLastSeenWhere_ServerBusy", 1, 0.75, 0.4)
         end
     end
     if #self.list.items > 0 then
@@ -651,6 +1055,12 @@ function Window:drawSpinner(cx, cy)
 end
 
 function Window:onClientEvent(event)
+    if event == "privacy" or event == "places" or string.sub(event, 1, 15) == "privacyRefused:" then
+        if self.onPrivacyEvent then
+            self:onPrivacyEvent(event)
+        end
+        return
+    end
     if event == "summary" then
         self.lastFindKey = nil
         self:refreshResults()
@@ -665,6 +1075,10 @@ function Window:close()
     if self.entry then
         self.entry:unfocus()
     end
+    if self.pEntry then
+        self.pEntry:unfocus()
+    end
+    self.freshKeys = nil
     LSW.Client.Unlisten(self.playerNum, "window")
     ISCollapsableWindow.close(self)
 end
@@ -672,7 +1086,6 @@ end
 function Window:open()
     self:setVisible(true)
     self:bringToTop()
-    self.entry:focus()
     local window = self
     LSW.Client.Listen(self.playerNum, "window", function(event)
         window:onClientEvent(event)
@@ -680,7 +1093,17 @@ function Window:open()
     self.summaryMs = getTimestampMs()
     self.lastFindKey = nil
     LSW.Client.RequestSummary(self:player())
+    if LSW.IsPrivacyEnabled() then
+        LSW.Client.RequestPrivacy(self:player())
+    end
     self:refreshResults()
+    self:setTab(self.tab)
+end
+
+function Window:refreshSearch()
+    self.lastFindKey = nil
+    self.summaryMs = getTimestampMs()
+    LSW.Client.RequestSummary(self:player())
 end
 
 function Window.Get(playerNum)
@@ -695,6 +1118,10 @@ function Window.Get(playerNum)
     window:addToUIManager()
     window:setVisible(false)
     Window.instances[playerNum] = window
+    if playerNum == 0 then
+        ISLayoutManager.RegisterWindow("TienLastSeenWhere", Window, window)
+        window:setVisible(false)
+    end
     return window
 end
 
@@ -720,6 +1147,7 @@ end
 local function onGameStart()
     Window.instances = {}
     nameCache = {}
+    countWidth = nil
 end
 
 Events.OnPlayerDeath.Add(onPlayerDeath)

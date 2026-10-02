@@ -1,12 +1,11 @@
 {
     "Sandbox_TienLastSeenWhere": "Tien's Last Seen Where",
     "Sandbox_TienLastSeenWhere_SearchRule": "Search rule",
-    "Sandbox_TienLastSeenWhere_SearchRule_tooltip": "What the item search looks through. Each player's choice: every player picks in their own mod settings. Any other value makes everyone use that rule. What I have seen: containers and floors the character has looked at. Shared: also what the members of their faction and safehouse have seen. Opened by anyone: every container anyone has opened and anything anyone has seen. Everything: all of that plus every container and floor around the player right now (containers nobody has opened yet hold nothing).",
+    "Sandbox_TienLastSeenWhere_SearchRule_tooltip": "What the item search looks through. Each player's choice: every player picks in their own settings or in the search window. Any other value makes everyone use that rule. What I have seen: containers and floors the character has looked at. Shared: also what the members of their faction and safehouse have seen. Opened by anyone: also every container anyone has opened and anything anyone has seen.",
     "Sandbox_TienLastSeenWhere_SearchRule_option1": "Each player's choice",
     "Sandbox_TienLastSeenWhere_SearchRule_option2": "What I have seen",
     "Sandbox_TienLastSeenWhere_SearchRule_option3": "Shared with faction and safehouse",
     "Sandbox_TienLastSeenWhere_SearchRule_option4": "Opened by anyone",
-    "Sandbox_TienLastSeenWhere_SearchRule_option5": "Everything",
     "Sandbox_TienLastSeenWhere_FloorRule": "Items on the floor",
     "Sandbox_TienLastSeenWhere_FloorRule_tooltip": "In sight: items lying on any square the character can see are remembered (small ones only up close, and in the dark only within reach). Within reach: only items shown in the loot window's Floor. Off: floors are never remembered.",
     "Sandbox_TienLastSeenWhere_FloorRule_option1": "In sight",
@@ -15,5 +14,15 @@
     "Sandbox_TienLastSeenWhere_SmallItemDistance": "Small item distance",
     "Sandbox_TienLastSeenWhere_SmallItemDistance_tooltip": "How many tiles away items lighter than 0.2 (rings, pills, bullets...) on the floor can be noticed. Heavier items are noticed anywhere in sight. Items found in search mode are always noticed.",
     "Sandbox_TienLastSeenWhere_ForgetAfterDays": "Forget after (days)",
-    "Sandbox_TienLastSeenWhere_ForgetAfterDays_tooltip": "In-game days after which a place not seen again is forgotten. 0 never forgets."
+    "Sandbox_TienLastSeenWhere_ForgetAfterDays_tooltip": "In-game days after which a place not seen again is forgotten. 0 never forgets.",
+    "Sandbox_TienLastSeenWhere_Privacy": "Privacy",
+    "Sandbox_TienLastSeenWhere_Privacy_tooltip": "Players can mark containers they have seen and exact items they hold or can reach as private (only me, or my faction and safehouse), from the Privacy tab of the search window. What the marker saw of a marked thing is left out of other players' searches; anyone else who sees it remembers and shares it as usual (the marker just does not tell). Admins can tick a box to see them anyway. Marks are forgotten when the character dies, and a container's mark when the container is gone. Does nothing when the search rule is What I have seen for everyone.",
+    "Sandbox_TienLastSeenWhere_MemoryRefresh": "Keep memories fresh",
+    "Sandbox_TienLastSeenWhere_MemoryRefresh_tooltip": "Only matters when Forget after (days) is set. When opened: a remembered container's clock restarts only when the character looks inside it again. When opened or nearby: standing next to it is enough (what is inside is still what was last seen). Floors are refreshed whenever they are in sight either way.",
+    "Sandbox_TienLastSeenWhere_MemoryRefresh_option1": "When opened",
+    "Sandbox_TienLastSeenWhere_MemoryRefresh_option2": "When opened or nearby",
+    "Sandbox_TienLastSeenWhere_FoundByName": "Found by shows",
+    "Sandbox_TienLastSeenWhere_FoundByName_tooltip": "How the search window names who found something (only for the searcher's own faction and safehouse members; others show as Someone), and who found a private mark.",
+    "Sandbox_TienLastSeenWhere_FoundByName_option1": "Username",
+    "Sandbox_TienLastSeenWhere_FoundByName_option2": "Character name"
 }

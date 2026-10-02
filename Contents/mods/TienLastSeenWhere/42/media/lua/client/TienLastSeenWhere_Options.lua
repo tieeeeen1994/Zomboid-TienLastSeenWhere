@@ -28,6 +28,18 @@ function Options.GetSearchRule()
     return LSW.RULE_MINE + index - 1
 end
 
+function Options.SetSearchRule(rule)
+    local option = getOption(Options.SEARCH_RULE)
+    if not option then
+        return
+    end
+    local index = math.max(1, math.min(rule, LSW.RULE_EXPLORED) - LSW.RULE_MINE + 1)
+    if option:getValue() ~= index then
+        option:setValue(index)
+        PZAPI.ModOptions:save()
+    end
+end
+
 function Options.GetEffectiveRule()
     return LSW.ResolveRule(Options.GetSearchRule())
 end
@@ -58,11 +70,18 @@ if PZAPI and PZAPI.ModOptions then
     rule:addItem("UI_TienLastSeenWhere_SearchRule_Mine", true)
     rule:addItem("UI_TienLastSeenWhere_SearchRule_Shared", false)
     rule:addItem("UI_TienLastSeenWhere_SearchRule_Explored", false)
-    rule:addItem("UI_TienLastSeenWhere_SearchRule_Everything", false)
 
     options:addColorPicker(Options.ARROW_COLOUR, "UI_TienLastSeenWhere_ArrowColour", 1, 0.84, 0.31, 0.85,
         "UI_TienLastSeenWhere_ArrowColour_tooltip")
 
     options:addSlider(Options.ARROW_SIZE, "UI_TienLastSeenWhere_ArrowSize", 50, 200, 10, 100,
         "UI_TienLastSeenWhere_ArrowSize_tooltip")
+
+    Events.OnGameStart.Add(function()
+        local option = getOption(Options.SEARCH_RULE)
+        local index = option and option:getValue()
+        if type(index) == "number" and index > LSW.RULE_EXPLORED - LSW.RULE_MINE + 1 then
+            option:setValue(LSW.RULE_EXPLORED - LSW.RULE_MINE + 1)
+        end
+    end)
 end

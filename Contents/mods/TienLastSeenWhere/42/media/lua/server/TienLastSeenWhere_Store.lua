@@ -12,9 +12,11 @@ local Store = LSW.Store
 
 Store.FOLDER = "TienLastSeenWhere"
 Store.WORLD_KEY = "_world"
-Store.VERSION = "1"
+Store.VERSION = "2"
 Store.SAVE_INTERVAL_MS = 30000
 Store.IDLE_UNLOAD_MS = 300000
+
+Store.clearListeners = {}
 
 local records = {}
 local lastSaveMs = 0
@@ -68,6 +70,64 @@ local function decodeItems(text)
     return items
 end
 
+local function encodeParents(parents)
+    if not parents or #parents == 0 then
+        return "-"
+    end
+    return table.concat(parents, "|")
+end
+
+local function decodeParents(text)
+    if text == nil or text == "-" then
+        return nil
+    end
+    local parents = {}
+    for key in string.gmatch(text, "[^|]+") do
+        parents[#parents + 1] = key
+    end
+    return parents
+end
+
+local function encodeIds(ids)
+    if not ids then
+        return "-"
+    end
+    local parts = {}
+    for fullType, list in pairs(ids) do
+        local numbers = {}
+        for i, id in ipairs(list) do
+            numbers[i] = string.format("%d", id)
+        end
+        parts[#parts + 1] = fullType .. "=" .. table.concat(numbers, ",")
+    end
+    if #parts == 0 then
+        return "-"
+    end
+    return table.concat(parts, ";")
+end
+
+local function decodeIds(text)
+    if text == nil or text == "-" then
+        return nil
+    end
+    local ids = {}
+    for fullType, numbers in string.gmatch(text, "([^;=]+)=([^;]+)") do
+        local list = {}
+        for id in string.gmatch(numbers, "%-?%d+") do
+            list[#list + 1] = tonumber(id)
+        end
+        ids[fullType] = list
+    end
+    return ids
+end
+
+function Store.Folder()
+    return worldFolder()
+end
+
+Store.Field = field
+Store.Unfield = unfield
+
 local function encodePlace(place)
     return table.concat({
         "P",
@@ -81,15 +141,24 @@ local function encodePlace(place)
         field(place.building),
         string.format("%.3f", place.t),
         encodeItems(place.items),
+        encodeParents(place.parents),
+        encodeIds(place.ids),
+        field(place.by),
+        place.touch and string.format("%.3f", place.touch) or "-",
     }, "\t")
 end
 
-local PLACE_PATTERN = "^P\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)$"
+local PLACE_PATTERN = "^P\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)$"
+local PLACE_PATTERN_V1 = "^P\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)\t([^\t]+)$"
 
 local function decodePlace(line)
-    local key, kind, x, y, z, placeType, room, building, t, items = string.match(line, PLACE_PATTERN)
+    local key, kind, x, y, z, placeType, room, building, t, items, parents, ids, by, touch =
+        string.match(line, PLACE_PATTERN)
     if not key then
-        return nil
+        key, kind, x, y, z, placeType, room, building, t, items = string.match(line, PLACE_PATTERN_V1)
+        if not key then
+            return nil
+        end
     end
     return {
         key = key,
@@ -102,11 +171,58 @@ local function decodePlace(line)
         building = unfield(building),
         t = tonumber(t) or 0,
         items = decodeItems(items),
+        parents = decodeParents(parents),
+        ids = decodeIds(ids),
+        by = unfield(by),
+        touch = tonumber(touch),
     }
 end
 
 local function newRecord(key)
-    return { key = key, hours = 0, places = {}, order = {}, version = 0, dirty = false, usedMs = getTimestampMs() }
+    return {
+        key = key,
+        hours = 0,
+        places = {},
+        order = {},
+        bySquare = {},
+        version = 0,
+        dirty = false,
+        usedMs = getTimestampMs(),
+    }
+end
+
+local function squareOf(place)
+    return LSW.SquareKey(place.x, place.y, place.z)
+end
+
+local function index(record, place)
+    local square = squareOf(place)
+    local keys = record.bySquare[square]
+    if not keys then
+        keys = {}
+        record.bySquare[square] = keys
+    end
+    keys[place.key] = true
+end
+
+local function unindex(record, place)
+    local square = squareOf(place)
+    local keys = record.bySquare[square]
+    if keys then
+        keys[place.key] = nil
+        for _ in pairs(keys) do
+            return
+        end
+        record.bySquare[square] = nil
+    end
+end
+
+local function drop(record, key)
+    local place = record.places[key]
+    if place then
+        unindex(record, place)
+        record.places[key] = nil
+    end
 end
 
 local function loadJobName(key)
@@ -127,9 +243,15 @@ local function stopLoading(record)
 end
 
 local function clear(record)
+    if record.key ~= Store.WORLD_KEY then
+        for _, listener in ipairs(Store.clearListeners) do
+            listener(record.key)
+        end
+    end
     stopLoading(record)
     record.places = {}
     record.order = {}
+    record.bySquare = {}
     record.version = record.version + 1
     record.dirty = true
 end
@@ -147,8 +269,12 @@ local function addLoaded(record, line)
     local place = decodePlace(line)
     if place and place.x and place.y and place.z and record.places[place.key] == nil
         and not (record.removed and record.removed[place.key]) then
+        if not place.by and record.key ~= Store.WORLD_KEY then
+            place.by = record.key
+        end
         list(record, place.key)
         record.places[place.key] = place
+        index(record, place)
     end
 end
 
@@ -187,6 +313,7 @@ local function load(key)
     local parts = LSW.Split(header, "\t")
     if parts[1] == "V" then
         record.hours = tonumber(parts[3]) or 0
+        record.name = unfield(parts[4])
     else
         addLoaded(record, header)
     end
@@ -200,7 +327,11 @@ local function load(key)
 end
 
 local function writeHeader(writer, record)
-    writer:writeln(table.concat({ "V", Store.VERSION, string.format("%.3f", record.hours) }, "\t"))
+    writer:writeln(table.concat({ "V", Store.VERSION, string.format("%.3f", record.hours), field(record.name) }, "\t"))
+end
+
+local function lastSeen(place)
+    return math.max(place.t or 0, place.touch or 0)
 end
 
 local function save(record)
@@ -219,8 +350,8 @@ local function save(record)
     while i <= #source do
         local key = source[i]
         local place = record.places[key]
-        if place and oldest and place.t < oldest then
-            record.places[key] = nil
+        if place and oldest and lastSeen(place) < oldest then
+            drop(record, key)
             record.version = record.version + 1
             place = nil
         end
@@ -246,8 +377,8 @@ forgetOld = function(record)
     end
     local oldest = LSW.Now() - days * 24
     for key, place in pairs(record.places) do
-        if place.t < oldest then
-            record.places[key] = nil
+        if lastSeen(place) < oldest then
+            drop(record, key)
             record.version = record.version + 1
             record.dirty = true
         end
@@ -280,6 +411,14 @@ function Store.ForPlayer(player)
     if hours > record.hours then
         record.hours = hours
     end
+    local descriptor = player:getDescriptor()
+    if descriptor then
+        local name = descriptor:getForename() .. " " .. descriptor:getSurname()
+        if name ~= record.name then
+            record.name = name
+            record.dirty = true
+        end
+    end
     return record
 end
 
@@ -305,9 +444,30 @@ end
 
 function Store.Put(record, place)
     list(record, place.key)
+    drop(record, place.key)
     record.places[place.key] = place
+    index(record, place)
     record.version = record.version + 1
     record.dirty = true
+end
+
+function Store.KeysAt(record, x, y, z)
+    return record.bySquare[LSW.SquareKey(x, y, z)]
+end
+
+function Store.Touch(record, key)
+    local place = record.places[key]
+    if place then
+        place.touch = LSW.Now()
+        record.dirty = true
+    end
+end
+
+function Store.NameOf(username)
+    if LSW.GetFoundByName() ~= LSW.NAME_CHARACTER or not username then
+        return username
+    end
+    return Store.Get(username).name or username
 end
 
 function Store.Order(record)
@@ -319,7 +479,7 @@ function Store.Remove(record, key)
         record.removed[key] = true
     end
     if record.places[key] then
-        record.places[key] = nil
+        drop(record, key)
         record.version = record.version + 1
         record.dirty = true
     end

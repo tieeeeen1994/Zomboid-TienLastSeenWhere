@@ -8,14 +8,18 @@ LSW.CMD_SEEN_CONTAINER = "seenContainer"
 LSW.CMD_SEEN_SQUARES = "seenSquares"
 LSW.CMD_SUMMARY = "summary"
 LSW.CMD_FIND = "find"
+LSW.CMD_PRIVACY = "privacy"
+LSW.CMD_PRIVACY_SET = "privacySet"
+LSW.CMD_PLACES = "places"
 LSW.REPLY_SUMMARY = "summary"
 LSW.REPLY_FIND = "find"
+LSW.REPLY_PRIVACY = "privacy"
+LSW.REPLY_PLACES = "places"
 
 LSW.RULE_PLAYER = 1
 LSW.RULE_MINE = 2
 LSW.RULE_SHARED = 3
 LSW.RULE_EXPLORED = 4
-LSW.RULE_EVERYTHING = 5
 
 LSW.FLOOR_IN_SIGHT = 1
 LSW.FLOOR_IN_REACH = 2
@@ -27,9 +31,14 @@ LSW.KIND_BODY = "d"
 LSW.KIND_BAG = "b"
 LSW.KIND_FLOOR = "f"
 
+LSW.MARK_PLACE = "p"
+LSW.MARK_ITEM = "i"
+
+LSW.PRIVATE_NONE = 0
+LSW.PRIVATE_ME = 1
+LSW.PRIVATE_GROUP = 2
+
 LSW.SMALL_WEIGHT = 0.2
-LSW.LIVE_RADIUS = 30
-LSW.LIVE_LEVELS = 3
 LSW.FIND_LIMIT = 40
 LSW.SUMMARY_CHUNK = 400
 
@@ -39,10 +48,10 @@ end
 
 function LSW.GetSandboxRule()
     local rule = tonumber(sandbox().SearchRule)
-    if not rule or rule < LSW.RULE_PLAYER or rule > LSW.RULE_EVERYTHING then
+    if not rule or rule < LSW.RULE_PLAYER then
         return LSW.RULE_PLAYER
     end
-    return rule
+    return math.min(rule, LSW.RULE_EXPLORED)
 end
 
 function LSW.ResolveRule(playerRule)
@@ -51,10 +60,10 @@ function LSW.ResolveRule(playerRule)
         return forced
     end
     local rule = tonumber(playerRule)
-    if not rule or rule < LSW.RULE_MINE or rule > LSW.RULE_EVERYTHING then
+    if not rule or rule < LSW.RULE_MINE then
         return LSW.RULE_MINE
     end
-    return rule
+    return math.min(rule, LSW.RULE_EXPLORED)
 end
 
 function LSW.GetFloorRule()
@@ -81,6 +90,31 @@ function LSW.GetForgetAfterDays()
     return days
 end
 
+LSW.REFRESH_OPENED = 1
+LSW.REFRESH_NEARBY = 2
+LSW.NAME_USERNAME = 1
+LSW.NAME_CHARACTER = 2
+
+function LSW.GetMemoryRefresh()
+    return tonumber(sandbox().MemoryRefresh) == LSW.REFRESH_NEARBY and LSW.REFRESH_NEARBY or LSW.REFRESH_OPENED
+end
+
+function LSW.GetFoundByName()
+    return tonumber(sandbox().FoundByName) == LSW.NAME_CHARACTER and LSW.NAME_CHARACTER or LSW.NAME_USERNAME
+end
+
+function LSW.IsPrivacyEnabled()
+    return sandbox().Privacy ~= false
+end
+
+function LSW.IsPrivacyUseful()
+    return LSW.IsPrivacyEnabled() and LSW.GetSandboxRule() ~= LSW.RULE_MINE
+end
+
+function LSW.MarkKey(kind, id)
+    return kind .. ":" .. tostring(id)
+end
+
 function LSW.Now()
     return getGameTime():getWorldAgeHours()
 end
@@ -91,6 +125,33 @@ function LSW.Split(text, separator)
         parts[#parts + 1] = part
     end
     return parts
+end
+
+function LSW.BodyId(body)
+    local id = body and body:getObjectIDAsLong()
+    if type(id) == "number" and id >= 0 then
+        return id
+    end
+    return nil
+end
+
+function LSW.FindBody(square, key)
+    local bodies = square:getDeadBodys()
+    local id = tonumber(string.match(key, ":#(%d+)$"))
+    if id then
+        for i = 0, bodies:size() - 1 do
+            local body = bodies:get(i)
+            if LSW.BodyId(body) == id then
+                return body
+            end
+        end
+        return nil
+    end
+    local index = tonumber(string.match(key, ":(%d+)$"))
+    if index and index < bodies:size() then
+        return bodies:get(index)
+    end
+    return nil
 end
 
 function LSW.SquareKey(x, y, z)
