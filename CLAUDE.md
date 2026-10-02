@@ -160,15 +160,20 @@ listed under "To verify".
   (hidden in single player) / Share / Show. On me and in reach = the inventory (recursive) plus the open loot window's
   container (recursive; the Floor as floor items, others with `Watch.Locate`), rebuilt when its signature changes
   (checked every second). Containers I remember are re-requested every 15 s while shown. Refusals show as bad halo text.
-- Find tab columns: Place | Where (distance + floors) | Seen | Found by | Count. The header is five
-  `ISResizableButton`s between the scope combo and the list (hidden in the On me scope), placed every frame by
-  `layoutHeaders` from `colWidths` (where / seen / by; Count is fixed, Place takes the rest). Where, Seen and Found by
-  are dragged by their **left** edge (`resizeLeft`, like vanilla's inventory Category header) and the column to their
-  left gives or takes the width (Place for Where); `maximumWidth` keeps that neighbour above its minimum. Place and
-  Count get `ISButton`'s mouse move handlers so they never resize. Note `ISResizableButton.new` writes
-  `minimumWidth` on the class, so it is set on each header after `new`. Clicking a header sorts the places under each
+- Find tab columns: Place | Where (distance + floors) | Seen | Found by | Count. The header is five buttons of the
+  file-local `Header` class (an `ISButton`) between the scope combo and the list (hidden in the On me scope), placed every
+  frame by `layoutHeaders` from `colWidths` (where / seen / by / count, measured from the list's right edge; Place takes the rest). Every column
+  line (Place|Where, Where|Seen, Seen|Found by, Found by|Count) is dragged from within 4 px on **either** side (`edgeAt`, highlighted with a
+  white bar while hovered or dragged); the column right of the line changes width and the one to its left gives or
+  takes it (Place for Where), both kept above `COLUMN_MIN`. The drag is absolute: `startHeaderDrag` remembers the grab
+  offset and the fixed outer edges, and each mouse move (and each `prerender`, which also ends it once the button is up)
+  sets the line to the mouse. It used to be vanilla `ISResizableButton` with `resizeLeft`, which players could not resize with:
+  it only grabs the 4 px right of the line, adds up `dx` per move, and `layoutHeaders` gives each header one extra
+  pixel of overlap, so `onresize` read width + 1 and every move event added a pixel (a slow drag to the right did
+  nothing at all). `prerender` calls `setVisible` on the headers only when it changes (`ISButton:setVisible(true)`
+  re-reads `mouseOver`, which brought the hover highlight back over the grab zone). Clicking a header sorts the places under each
   item by it (again = reverse; default Where, nearest first; ties by distance). `drawRow` reads `window:columns(right)`,
-  the same edges. Text is cut with "..." to its column (`Window.Fit`; Kahlua strings are Java strings, so `sub` never
+  the same edges: Where, Seen and Found by are centred in their column, Count right-aligned. Text is cut with "..." to its column (`Window.Fit`; Kahlua strings are Java strings, so `sub` never
   splits a character). Player 0's window is registered with `ISLayoutManager` ("TienLastSeenWhere"):
   `SaveLayout` / `RestoreLayout` keep position, size, column widths and sort in `layout.ini` (saved on `OnPostSave`),
   never the visibility. Found by comes from the server (`finderOf` in `findJob`): `byMe`, `by` = the name

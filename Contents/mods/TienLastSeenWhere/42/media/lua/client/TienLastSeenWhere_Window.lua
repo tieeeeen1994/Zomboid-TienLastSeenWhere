@@ -1,5 +1,5 @@
 require "ISUI/ISCollapsableWindow"
-require "ISUI/ISResizeableButton"
+require "ISUI/ISButton"
 require "ISUI/ISLayoutManager"
 require "TienLastSeenWhere_Core"
 require "TienLastSeenWhere_Options"
@@ -144,11 +144,59 @@ local function floorText(player, place)
     return getText(diff == -1 and "IGUI_TienLastSeenWhere_FloorDown" or "IGUI_TienLastSeenWhere_FloorsDown", count)
 end
 
-local countWidth = nil
+local COLUMN_MIN = { place = 80, where = 60, seen = 50, by = 50, count = 40 }
+local RESIZABLE = { "where", "seen", "by", "count" }
+local LEFT_OF = { where = "place", seen = "where", by = "seen", count = "by" }
+local RIGHT_OF = { where = "seen", seen = "by", by = "count", count = "stop" }
+local EDGE_GRAB = 4
 
-local COLUMN_MIN = { place = 80, where = 60, seen = 50, by = 50 }
-local RESIZABLE = { "where", "seen", "by" }
-local LEFT_OF = { where = "place", seen = "where", by = "seen" }
+local Header = ISButton:derive("TienLastSeenWhereHeader")
+
+function Header:onMouseMove(dx, dy)
+    local window = self.window
+    if window.dragEdge then
+        window:dragHeaderEdge()
+        return
+    end
+    ISButton.onMouseMove(self, dx, dy)
+    if window:edgeAt(window.list:getMouseX()) then
+        self.mouseOver = false
+    end
+end
+
+function Header:onMouseMoveOutside(dx, dy)
+    if self.window.dragEdge then
+        self.window:dragHeaderEdge()
+        return
+    end
+    ISButton.onMouseMoveOutside(self, dx, dy)
+end
+
+function Header:onMouseDown(x, y)
+    local window = self.window
+    local edge = window:edgeAt(window.list:getMouseX())
+    if edge then
+        window:startHeaderDrag(edge, self)
+        return
+    end
+    ISButton.onMouseDown(self, x, y)
+end
+
+function Header:onMouseUp(x, y)
+    if self.window.dragEdge then
+        self.window:endHeaderDrag()
+        return
+    end
+    ISButton.onMouseUp(self, x, y)
+end
+
+function Header:onMouseUpOutside(x, y)
+    if self.window.dragEdge then
+        self.window:endHeaderDrag()
+        return
+    end
+    ISButton.onMouseUpOutside(self, x, y)
+end
 
 local function defaultWidths()
     local tm = getTextManager()
@@ -157,35 +205,29 @@ local function defaultWidths()
         seen = math.max(tm:MeasureStringX(UIFont.Small, getText("IGUI_TienLastSeenWhere_DaysAgo", "999")),
             tm:MeasureStringX(UIFont.Small, getText("IGUI_TienLastSeenWhere_ColumnSeen"))) + PAD * 2,
         by = BY_WIDTH,
+        count = math.max(tm:MeasureStringX(UIFont.Small, "x9999"),
+            tm:MeasureStringX(UIFont.Small, getText("IGUI_TienLastSeenWhere_ColumnCount"))) + PAD * 2,
     }
-end
-
-local function getCountWidth()
-    if not countWidth then
-        local tm = getTextManager()
-        countWidth = math.max(tm:MeasureStringX(UIFont.Small, "x9999"),
-            tm:MeasureStringX(UIFont.Small, getText("IGUI_TienLastSeenWhere_ColumnCount"))) + PAD * 2
-    end
-    return countWidth
 end
 
 function Window:columnEdges()
     local list = self.list
     local right = list:getWidth() - PAD - (list.vscroll and list.vscroll:getWidth() or 0)
     local w = self.colWidths
-    local count = right + PAD - getCountWidth()
+    local stop = right + PAD
+    local count = stop - w.count
     local by = count - w.by
     local seen = by - w.seen
     local where = seen - w.where
-    return { place = 0, where = where, seen = seen, by = by, count = count, right = right }
+    return { place = 0, where = where, seen = seen, by = by, count = count, stop = stop, right = right }
 end
 
 function Window:columns(right)
     local edges = self:columnEdges()
     return {
-        where = edges.where + 4, whereWidth = edges.seen - edges.where - 8,
-        seen = edges.seen + 4, seenWidth = edges.by - edges.seen - 8,
-        by = edges.by + 4, byWidth = edges.count - edges.by - 8,
+        where = (edges.where + edges.seen) / 2, whereWidth = edges.seen - edges.where - 8,
+        seen = (edges.seen + edges.by) / 2, seenWidth = edges.by - edges.seen - 8,
+        by = (edges.by + edges.count) / 2, byWidth = edges.count - edges.by - 8,
         count = right,
         labelRight = edges.where - 4,
     }
@@ -355,19 +397,11 @@ function Window:createChildren()
         { "by", "IGUI_TienLastSeenWhere_ColumnBy" },
         { "count", "IGUI_TienLastSeenWhere_ColumnCount" },
     }) do
-        local header = ISResizableButton:new(0, self.headerY, 10, HEADER_HEIGHT, getText(spec[2]), self,
-            Window.onHeaderClick)
+        local header = Header:new(0, self.headerY, 10, HEADER_HEIGHT, getText(spec[2]), self, Window.onHeaderClick)
         header.internal = spec[1]
+        header.window = self
         header:initialise()
         header.borderColor.a = 0.2
-        header.minimumWidth = COLUMN_MIN[spec[1]] or 10
-        if LEFT_OF[spec[1]] then
-            header.resizeLeft = true
-            header.onresize = { Window.onHeaderResize, self, header }
-        else
-            header.onMouseMove = ISButton.onMouseMove
-            header.onMouseMoveOutside = ISButton.onMouseMoveOutside
-        end
         self:addChild(header)
         self.headers[spec[1]] = header
     end
@@ -423,23 +457,71 @@ function Window:layoutHeaders()
         header:setWidth(math.max(1, right - left + 1))
         header:setY(self.headerY)
     end
+end
+
+function Window:edgeAt(x)
+    local edges = self:columnEdges()
     for _, name in ipairs(RESIZABLE) do
-        local header = self.headers[name]
-        local neighbour = LEFT_OF[name]
-        local room = edges[name] - edges[neighbour] - COLUMN_MIN[neighbour]
-        header.maximumWidth = self.colWidths[name] + math.max(0, room)
+        if math.abs(x - edges[name]) <= EDGE_GRAB then
+            return name
+        end
+    end
+    return nil
+end
+
+function Window:startHeaderDrag(name, header)
+    local edges = self:columnEdges()
+    self.dragEdge = {
+        name = name,
+        header = header,
+        offset = self.list:getMouseX() - edges[name],
+        left = edges[LEFT_OF[name]],
+        right = edges[RIGHT_OF[name]],
+    }
+    header:setCapture(true)
+end
+
+function Window:dragHeaderEdge()
+    local drag = self.dragEdge
+    local neighbour = LEFT_OF[drag.name]
+    local low = drag.left + COLUMN_MIN[neighbour]
+    local high = drag.right - COLUMN_MIN[drag.name]
+    if high < low then
+        return
+    end
+    local edge = math.floor(math.max(low, math.min(high, self.list:getMouseX() - drag.offset)) + 0.5)
+    self.colWidths[drag.name] = drag.right - edge
+    if neighbour ~= "place" then
+        self.colWidths[neighbour] = edge - drag.left
+    end
+    self:layoutHeaders()
+end
+
+function Window:endHeaderDrag()
+    local drag = self.dragEdge
+    self.dragEdge = nil
+    if drag then
+        drag.header:setCapture(false)
     end
 end
 
-function Window:onHeaderResize(header)
-    local name = header.internal
-    local delta = header:getWidth() - self.colWidths[name]
-    self.colWidths[name] = header:getWidth()
-    local neighbour = LEFT_OF[name]
-    if neighbour ~= "place" then
-        self.colWidths[neighbour] = math.max(COLUMN_MIN[neighbour], self.colWidths[neighbour] - delta)
+function Window:renderHeaderEdge()
+    if not self.headers or self.scope == Window.SCOPE_ON_ME then
+        return
     end
-    self:layoutHeaders()
+    local name = self.dragEdge and self.dragEdge.name
+    if not name then
+        for _, header in pairs(self.headers) do
+            if header:isMouseOver() then
+                name = self:edgeAt(self.list:getMouseX())
+                break
+            end
+        end
+    end
+    if name then
+        local x = self.list:getX() + self:columnEdges()[name]
+        self:drawRect(x - 1, self.headerY, 2, HEADER_HEIGHT, 0.8, 1, 1, 1)
+    end
 end
 
 function Window:onHeaderClick(header)
@@ -458,6 +540,7 @@ function Window:SaveLayout(name, layout)
     layout.colWhere = tostring(self.colWidths.where)
     layout.colSeen = tostring(self.colWidths.seen)
     layout.colBy = tostring(self.colWidths.by)
+    layout.colCount = tostring(self.colWidths.count)
     layout.sortBy = self.sortBy or "where"
     layout.sortDesc = tostring(self.sortDesc == true)
 end
@@ -470,7 +553,7 @@ function Window:RestoreLayout(name, layout)
         end
     end
     ISLayoutManager.DefaultRestoreWindow(self, copy)
-    for key, field in pairs({ colWhere = "where", colSeen = "seen", colBy = "by" }) do
+    for key, field in pairs({ colWhere = "where", colSeen = "seen", colBy = "by", colCount = "count" }) do
         local width = tonumber(layout[key])
         if width then
             self.colWidths[field] = math.max(COLUMN_MIN[field], width)
@@ -931,9 +1014,10 @@ function Window.drawRow(list, y, item, alt)
         if floors then
             where = where .. ", " .. floors
         end
-        list:drawText(fitCached(item, "where", where, columns.whereWidth), columns.where, textY,
+        list:drawTextCentre(fitCached(item, "where", where, columns.whereWidth), columns.where, textY,
             0.7, 0.7, 0.7, 1, UIFont.Small)
-        list:drawText(ageText(place.t), columns.seen, textY, 0.7, 0.7, 0.7, 1, UIFont.Small)
+        list:drawTextCentre(fitCached(item, "seen", ageText(place.t), columns.seenWidth), columns.seen, textY,
+            0.7, 0.7, 0.7, 1, UIFont.Small)
         local finder = finderText(place)
         local fr, fg, fb = 0.7, 0.7, 0.7
         if place.byMe then
@@ -941,7 +1025,8 @@ function Window.drawRow(list, y, item, alt)
         elseif place.by then
             fr, fg, fb = 0.5, 0.75, 1
         end
-        list:drawText(fitCached(item, "by", finder, columns.byWidth), columns.by, textY, fr, fg, fb, 1, UIFont.Small)
+        list:drawTextCentre(fitCached(item, "by", finder, columns.byWidth), columns.by, textY, fr, fg, fb, 1,
+            UIFont.Small)
         list:drawTextRight("x" .. string.format("%d", place.count or 0), columns.count, textY,
             0.7, 0.7, 0.7, 1, UIFont.Small)
     end
@@ -976,7 +1061,16 @@ function Window:prerender()
     self:syncRuleCombo()
     local showHeaders = self.scope ~= Window.SCOPE_ON_ME
     for _, header in pairs(self.headers) do
-        header:setVisible(showHeaders)
+        if header:isVisible() ~= showHeaders then
+            header:setVisible(showHeaders)
+        end
+    end
+    if self.dragEdge then
+        if isMouseButtonDown(0) and showHeaders then
+            self:dragHeaderEdge()
+        else
+            self:endHeaderDrag()
+        end
     end
     self:layoutHeaders()
     if self.lastSelected ~= self.list.selected or now - (self.buttonsMs or 0) > BUTTONS_REFRESH_MS then
@@ -995,6 +1089,7 @@ function Window:render()
         self:renderPrivacy()
         return
     end
+    self:renderHeaderEdge()
     local textY = self.ruleY + 3
     local x = self.ruleCombo:getX() - PAD
     local function note(key, r, g, b)
@@ -1147,7 +1242,6 @@ end
 local function onGameStart()
     Window.instances = {}
     nameCache = {}
-    countWidth = nil
 end
 
 Events.OnPlayerDeath.Add(onPlayerDeath)
