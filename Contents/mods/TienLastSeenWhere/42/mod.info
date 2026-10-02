@@ -1,6 +1,6 @@
 name=Tien's Last Seen Where
 id=TienLastSeenWhere
-description=Forgot where you saw that hammer? Type an item's name and see every container and floor where your character saw it, then follow an arrow on the floor back to it. Only what you have looked at yourself is remembered, on the server, until the character dies.
+description=Forgot where you saw that hammer? Type an item's name and see every container and floor where your character saw it, then follow an arrow on the floor back to it. Remembers what your character has seen (optionally what your faction or anyone has seen), on the server, until the character dies. Mark containers and items private to keep them out of other players' searches.
 author=Tien
 poster=poster.png
 icon=icon.png
