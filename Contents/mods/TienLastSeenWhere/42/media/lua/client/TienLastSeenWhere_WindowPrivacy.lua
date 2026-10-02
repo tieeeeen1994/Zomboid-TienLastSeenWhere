@@ -249,7 +249,32 @@ local function itemRow(playerNum, item, where, holder)
     }
 end
 
-function Window:markedRows(query)
+-- Nearest first by floor, then by flat distance: the player's own floor before any
+-- other, nearer floors before farther ones (the one below first when one above is as
+-- near), and within a floor by X/Y distance, then name.
+local function setNearness(row, place, player)
+    if not place.x or not place.y or not place.z then
+        return
+    end
+    row.d = LSW.DistanceTo(player:getX(), player:getY(), place.x + 0.5, place.y + 0.5)
+    row.floorGap = math.abs(place.z - math.floor(player:getZ()))
+    row.floorZ = place.z
+end
+
+local function nearerPlace(a, b)
+    if a.floorGap ~= b.floorGap then
+        return a.floorGap < b.floorGap
+    end
+    if a.floorZ ~= b.floorZ then
+        return a.floorZ < b.floorZ
+    end
+    if a.d ~= b.d then
+        return a.d < b.d
+    end
+    return string.lower(a.label) < string.lower(b.label)
+end
+
+function Window:markedRows(query, player)
     local rows = {}
     local privacy = LSW.Client.GetPrivacy(self.playerNum)
     for _, mark in ipairs(privacy and privacy.marks or {}) do
@@ -267,6 +292,7 @@ function Window:markedRows(query)
             }
             row = placeRow(self.playerNum, place, mark.id, mark.level)
             row.remembered = mark.seen ~= nil
+            setNearness(row, place, player)
         else
             local info = Window.ScriptInfo(mark.fullType or "")
             row = {
@@ -296,6 +322,12 @@ function Window:markedRows(query)
         if a.row ~= b.row then
             return a.row == "place"
         end
+        if a.row == "place" and (a.d ~= nil) ~= (b.d ~= nil) then
+            return a.d ~= nil
+        end
+        if a.row == "place" and a.d ~= nil then
+            return nearerPlace(a, b)
+        end
         return string.lower(a.label) < string.lower(b.label)
     end)
     return rows
@@ -308,11 +340,19 @@ function Window:placeRows(query, player)
             LSW.Client.GetMarkLevel(self.playerNum, LSW.MARK_PLACE, place.key))
         row.remembered = true
         if matches(row.label, query) then
-            row.d = LSW.DistanceTo(player:getX(), player:getY(), place.x + 0.5, place.y + 0.5)
+            setNearness(row, place, player)
             rows[#rows + 1] = row
         end
     end
-    table.sort(rows, function(a, b) return a.d < b.d end)
+    table.sort(rows, function(a, b)
+        if (a.d ~= nil) ~= (b.d ~= nil) then
+            return a.d ~= nil
+        end
+        if a.d == nil then
+            return string.lower(a.label) < string.lower(b.label)
+        end
+        return nearerPlace(a, b)
+    end)
     return rows
 end
 
@@ -495,7 +535,7 @@ function Window:rebuildPrivacyRows()
     elseif self.privacyView == Window.VIEW_NEAR then
         rows = self:nearRows(query, player)
     else
-        rows = self:markedRows(query)
+        rows = self:markedRows(query, player)
     end
     self.pList:clear()
     for i, row in ipairs(rows) do

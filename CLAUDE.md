@@ -171,6 +171,10 @@ listed under "To verify".
   selects it in the loot window (`Actions.OpenLoot`), so vanilla highlights which counter it is. Place and container
   rows are `PLACE_ROW` tall with the Find tab's direction arrow, distance and floors: the user could not tell apart
   rows that all read "Counter in Kitchen". Containers I remember are re-requested every 15 s while shown.
+  Containers I remember and the places of Marked private (after new exposures, before items) are sorted by floor
+  first, then flat distance (`setNearness` / `nearerPlace`): the player's floor, then nearer floors (below before above
+  at the same gap), X/Y distance within a floor, places without a position last. The user asked for Z to never mix
+  into the distance. Sorted only when the list is rebuilt, so it does not reshuffle while walking.
   Mark results (done or refused) show as halo text from `Client` (`onPrivacy`), so they also appear for the menus.
 - `client/TienLastSeenWhere_PrivacyMenu.lua`: Privacy in right-click menus (the user could not find the container to
   mark in the tab). World menu: "Privacy: <container>" per container of a clicked object (`OnFillWorldObjectContextMenu`,
