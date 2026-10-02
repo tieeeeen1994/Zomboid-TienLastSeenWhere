@@ -15,8 +15,10 @@ then follow an arrow on the floor back to it.
   to the stairs first and shows how many floors up or down. **Go there** walks you to it and opens the loot window on
   it. **Take** picks the item up once it is within reach.
 - **Memory follows the character.** It is kept on the server and forgotten when the character dies.
-- **Privacy.** In the window's Privacy tab, mark a container you remember, or an item you carry or can reach, as
-  private to you or to your faction and safehouse. What you saw of it is then left out of other players' searches.
+- **Privacy.** Right-click a container (in the world or its loot window button) or an item and pick Privacy, or use
+  the window's Privacy tab (containers around you, containers you remember, what you marked), to mark it private to
+  you or to your faction and safehouse; a container can be marked even while it is empty. What you saw of it is then
+  left out of other players' searches.
   Anyone else who sees it for themselves remembers it and shares it as usual. A marked bag hides everything in it.
   Your own private things show as "You (private)" in your results.
   If someone from your own faction or safehouse finds it, they mention it: the Privacy tab shows "Privacy (!)" and

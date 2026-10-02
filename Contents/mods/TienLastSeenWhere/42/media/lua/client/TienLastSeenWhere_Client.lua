@@ -9,6 +9,12 @@ local Client = LSW.Client
 
 Client.TIMEOUT_MS = 20000
 
+local MARKED_TEXT = {
+    [LSW.PRIVATE_ME] = "IGUI_TienLastSeenWhere_MarkedMe",
+    [LSW.PRIVATE_GROUP] = "IGUI_TienLastSeenWhere_MarkedGroup",
+    [LSW.PRIVATE_NONE] = "IGUI_TienLastSeenWhere_MarkedShared",
+}
+
 local states = {}
 local nextRequest = 0
 
@@ -151,6 +157,8 @@ function Client.SetMark(player, args)
     local state = stateOf(player:getPlayerNum())
     state.privacyRequest = newRequest()
     state.privacyMs = getTimestampMs()
+    state.markLevelRequest = state.privacyRequest
+    state.markLevel = args.level
     args.request = state.privacyRequest
     args.playerNum = player:getPlayerNum()
     LSW.ToServer(player, LSW.CMD_PRIVACY_SET, args)
@@ -231,8 +239,18 @@ local function onPrivacy(state, args)
         state.seeAll = false
     end
     notify(state, "privacy")
+    local player = getSpecificPlayer(tonumber(args.playerNum) or 0)
     if args.reason then
+        local text = getTextOrNull("IGUI_TienLastSeenWhere_Refused_" .. tostring(args.reason))
+        if player and text then
+            HaloTextHelper.addBadText(player, text)
+        end
         notify(state, "privacyRefused:" .. tostring(args.reason))
+    elseif state.markLevelRequest == args.request and player then
+        HaloTextHelper.addText(player, getText(MARKED_TEXT[state.markLevel] or MARKED_TEXT[LSW.PRIVATE_NONE]))
+    end
+    if state.markLevelRequest == args.request then
+        state.markLevelRequest = nil
     end
 end
 

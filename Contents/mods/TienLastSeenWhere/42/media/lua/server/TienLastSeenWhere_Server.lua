@@ -87,9 +87,7 @@ local function spriteName(object)
     return sprite and sprite:getName() or nil
 end
 
-local function objectKey(x, y, z, sprite, containerType)
-    return "o:" .. LSW.SquareKey(x, y, z) .. ":" .. tostring(sprite) .. ":" .. tostring(containerType)
-end
+local objectKey = LSW.ObjectKey
 
 local function vehicleKey(vehicle, partId)
     return "v:" .. tostring(vehicle:getSqlId()) .. ":" .. tostring(partId)
@@ -293,15 +291,8 @@ local function forgetPlace(player, key)
     Store.Remove(Store.World(), key)
 end
 
-local function onSeenContainer(player, args)
-    local resolved = resolve(player, args)
-    if not resolved or not resolved.square then
-        return
-    end
+local function snapshot(player, resolved)
     local square = resolved.square
-    if not near(player, square:getX(), square:getY(), Server.CONTAINER_REACH) then
-        return
-    end
     local items, ids = countItems(resolved.container)
     if isEmpty(items) then
         forgetPlace(player, resolved.key)
@@ -311,6 +302,18 @@ local function onSeenContainer(player, args)
         resolved.type, items, ids)
     entry.parents = resolved.parents
     remember(player, entry)
+end
+
+local function onSeenContainer(player, args)
+    local resolved = resolve(player, args)
+    if not resolved or not resolved.square then
+        return
+    end
+    local square = resolved.square
+    if not near(player, square:getX(), square:getY(), Server.CONTAINER_REACH) then
+        return
+    end
+    snapshot(player, resolved)
 end
 
 local function floorItems(square)
@@ -1025,6 +1028,37 @@ local function itemInReach(player, id, args)
     return nil, nil
 end
 
+local function locatedPlaceMark(player, locator, level)
+    local resolved = resolve(player, locator)
+    if not resolved or not resolved.square then
+        return "unknown"
+    end
+    if resolved.kind ~= LSW.KIND_OBJECT and resolved.kind ~= LSW.KIND_VEHICLE and resolved.kind ~= LSW.KIND_BAG then
+        return "invalid"
+    end
+    local square = resolved.square
+    if level ~= LSW.PRIVATE_NONE and not near(player, square:getX(), square:getY(), Server.CONTAINER_REACH) then
+        return "far"
+    end
+    local ok, reason = Privacy.Set(Store.KeyOf(player), {
+        kind = LSW.MARK_PLACE,
+        id = resolved.key,
+        placeKind = resolved.kind,
+        x = square:getX(),
+        y = square:getY(),
+        z = square:getZ(),
+        type = resolved.type,
+        room = LSW.RoomName(square),
+    }, level)
+    if not ok then
+        return reason
+    end
+    if level ~= LSW.PRIVATE_NONE then
+        snapshot(player, resolved)
+    end
+    return nil
+end
+
 local function placeMark(player, key, level)
     if type(key) ~= "string" or string.len(key) > Server.MARK_KEY_LENGTH then
         return "invalid"
@@ -1121,7 +1155,9 @@ local function onPrivacySet(player, args)
         level = LSW.PRIVATE_ME
     end
     local reason
-    if args.kind == LSW.MARK_PLACE then
+    if args.kind == LSW.MARK_PLACE and type(args.locator) == "table" then
+        reason = locatedPlaceMark(player, args.locator, level)
+    elseif args.kind == LSW.MARK_PLACE then
         reason = placeMark(player, args.key, level)
     elseif args.kind == LSW.MARK_ITEM then
         reason = itemMark(player, args, level)

@@ -97,8 +97,12 @@ listed under "To verify".
     falls back to your own older sighting).
   - Privacy commands: `privacy` (reply: my marks with label data, `enabled`, `group` = isServer, `canSeeAll`);
     `privacySet {kind, key | id, level, locator}` (reply: the same, plus `reason` when refused: full / unknown / busy /
-    invalid / off); `places` (job: my remembered object, vehicle and bag places, nearest 300, 100 a message).
-    A place mark needs the key in my own record (corpses and floors cannot be marked). An item mark needs the item in my
+    invalid / off / far); `places` (job: my remembered object, vehicle and bag places, nearest 300, 100 a message).
+    A place mark by `key` needs the key in my own record (corpses and floors cannot be marked). A place mark with a
+    `locator` (`locatedPlaceMark`: the right-click menus and the Nearby list) resolves it to the server's container like
+    `seenContainer`, needs it within 10 tiles (`far`), takes the mark's label data from the container itself, then
+    snapshots it: an empty or never-opened container can be marked (the user could not mark a stash before filling it,
+    since empty containers are forgotten). An item mark needs the item in my
     inventory (recursive), in the container of `locator` within 10 tiles, or on / in a bag on the 3x3 floor; a bag
     becomes a place mark `b:<id>`. After an item mark the server re-snapshots that container or floor square so its ID
     is in `_world` and my record at once. Summary and find take `seeAll` (honoured only for `Privacy.CanSeeAll`); the
@@ -154,12 +158,29 @@ listed under "To verify".
     still reaches that player's faction under Shared).
 - `client/TienLastSeenWhere_WindowPrivacy.lua`: the Privacy tab (methods added to `LSW.Window`; the window builds it in
   `createChildren` when `createPrivacyChildren` exists and shows the tab only while `LSW.IsPrivacyUseful()`: option
-  on and the sandbox not forcing What I have seen). Filter box, view combo (Marked private / Containers I remember /
-  On me and in reach), admin tick box "Show private (admin)" (visible when the server says `canSeeAll`; sets the
-  client's `seeAll`, sent with every summary and find, and refreshes the search), list, buttons Only me / My group
-  (hidden in single player) / Share / Show. On me and in reach = the inventory (recursive) plus the open loot window's
-  container (recursive; the Floor as floor items, others with `Watch.Locate`), rebuilt when its signature changes
-  (checked every second). Containers I remember are re-requested every 15 s while shown. Refusals show as bad halo text.
+  on and the sandbox not forcing What I have seen). Filter box, view combo (Nearby and on me, the default /
+  Containers I remember / Marked private; the tab opens on Marked private while a new exposure is unread), admin tick
+  box "Show private (admin)" (visible when the server says `canSeeAll`; sets the client's `seeAll`, sent with every
+  summary and find, and refreshes the search), list, buttons Only me / My group (hidden in single player) / Share /
+  Show (double-click = Show). Nearby and on me = the inventory (recursive), then every container button of the loot
+  page (`page.backpacks`, i.e. everything in reach, even while the page is collapsed) as a markable `container` row
+  (object, vehicle part or floor bag; marked by locator) followed by its items; the container shown in the loot window
+  comes first, tagged "open"; corpses get a plain header, the Floor goes last. A container whose name matches the
+  filter lists all its items. Each container is walked once (a floor bag has its own button before the Floor's).
+  Rebuilt when the signature (items, buttons, shown container) changes, checked every second. Show on a container row
+  selects it in the loot window (`Actions.OpenLoot`), so vanilla highlights which counter it is. Place and container
+  rows are `PLACE_ROW` tall with the Find tab's direction arrow, distance and floors: the user could not tell apart
+  rows that all read "Counter in Kitchen". Containers I remember are re-requested every 15 s while shown.
+  Mark results (done or refused) show as halo text from `Client` (`onPrivacy`), so they also appear for the menus.
+- `client/TienLastSeenWhere_PrivacyMenu.lua`: Privacy in right-click menus (the user could not find the container to
+  mark in the tab). World menu: "Privacy: <container>" per container of a clicked object (`OnFillWorldObjectContextMenu`,
+  objects only, more than 3 go under one "Privacy" submenu), submenu Only me / My group / Share with tooltips and a tick
+  on the current level. Loot window container buttons: wraps `ISInventoryPage.onBackpackRightMouseDown` (vanilla puts a
+  bag's item menu there, otherwise Rename, and closes the menu when it has nothing to add, so ours reopens it with
+  `ISContextMenu.get`); bags go through the item menu. Items (`OnFillInventoryObjectContextMenu`): "Privacy" for one,
+  "Privacy (n items)" for up to 20, ticked only when they share a level; a bag becomes `b:<id>` as in the tab. The tick
+  needs the client's marks (`privacy` is requested the first time a menu opens) and the client's idea of the key
+  (`Menu.KeyOf`, `LSW.ObjectKey` shared with the server; a vehicle key needs a client `getSqlId`, else no tick).
 - Find tab columns: Place | Where (distance + floors) | Seen | Found by | Count. The header is five buttons of the
   file-local `Header` class (an `ISButton`) between the scope combo and the list (hidden in the On me scope), placed every
   frame by `layoutHeaders` from `colWidths` (where / seen / by / count, measured from the list's right edge; Place takes the rest). Every column
@@ -290,6 +311,9 @@ listed under "To verify".
   (the window is now 720 x 540), ISTickBox placement on the right, the Find column header lining up with the rows
   (scroll bar shown and hidden), `ISButton:setTitle` for "Privacy (!)", exposure appearing for the marker after
   another player opens a marked container, and clearing once the Marked list is viewed.
+- Privacy menus: right-click a counter (tick follows the mark), a fridge (two entries), a loot window container
+  button (object and vehicle; the menu must not flash closed), a bag button and items; marking an empty, unopened
+  crate; "far" from 11 tiles; the Nearby list with many counters (arrows, "open", Show selecting it in the loot window).
 
 ## Decisions
 

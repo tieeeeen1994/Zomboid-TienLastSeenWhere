@@ -158,6 +158,10 @@ function LSW.SquareKey(x, y, z)
     return string.format("%d,%d,%d", x, y, z)
 end
 
+function LSW.ObjectKey(x, y, z, sprite, containerType)
+    return "o:" .. LSW.SquareKey(x, y, z) .. ":" .. tostring(sprite) .. ":" .. tostring(containerType)
+end
+
 function LSW.BuildingKey(square)
     local building = square and square:getBuilding()
     local def = building and building:getDef()

@@ -46,6 +46,9 @@ Window.PAD = PAD
 Window.ROW = ROW
 Window.ICON = ICON
 Window.FONT_HGT_SMALL = FONT_HGT_SMALL
+Window.PLACE_ROW = PLACE_ROW
+Window.ARROW_COLUMN = ARROW_COLUMN
+Window.ARROW_X = ARROW_X
 
 Window.instances = {}
 
@@ -282,6 +285,7 @@ Window.ScriptInfo = scriptInfo
 Window.Score = score
 Window.PlaceLabel = placeLabel
 Window.AgeText = ageText
+Window.FloorText = floorText
 
 function Window:new(x, y, width, height, playerNum)
     local o = ISCollapsableWindow.new(self, x, y, width, height)

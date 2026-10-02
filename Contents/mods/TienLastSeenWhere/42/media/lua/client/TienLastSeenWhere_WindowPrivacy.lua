@@ -1,13 +1,18 @@
 require "ISUI/ISTickBox"
 require "TienLastSeenWhere_Window"
 require "TienLastSeenWhere_Watch"
+require "TienLastSeenWhere_PrivacyMenu"
 
 local LSW = TienLastSeenWhere
 local Window = LSW.Window
+local Menu = LSW.PrivacyMenu
 
 local PAD = Window.PAD
 local ROW = Window.ROW
 local ICON = Window.ICON
+local PLACE_ROW = Window.PLACE_ROW
+local ARROW_COLUMN = Window.ARROW_COLUMN
+local ARROW_X = Window.ARROW_X
 local FONT_HGT_SMALL = Window.FONT_HGT_SMALL
 local PLACES_REFRESH_MS = 15000
 local NEAR_REFRESH_MS = 1000
@@ -43,7 +48,7 @@ local function matches(text, query)
 end
 
 function Window:createPrivacyChildren(top, entryHeight, buttonTop, buttonHeight)
-    self.privacyView = Window.VIEW_MARKED
+    self.privacyView = Window.VIEW_NEAR
 
     self.pEntry = ISTextEntryBox:new("", PAD, top, self.width - PAD * 2, entryHeight)
     self.pEntry.anchorRight = true
@@ -56,12 +61,12 @@ function Window:createPrivacyChildren(top, entryHeight, buttonTop, buttonHeight)
     self:addChild(self.pEntry)
 
     local comboTop = self.pEntry:getBottom() + PAD
-    self.viewCombo = ISComboBox:new(PAD, comboTop, 200, entryHeight, self, Window.onViewChange)
+    self.viewCombo = ISComboBox:new(PAD, comboTop, 240, entryHeight, self, Window.onViewChange)
     self.viewCombo:initialise()
     self:addChild(self.viewCombo)
-    self.viewCombo:addOptionWithData(getText("IGUI_TienLastSeenWhere_ViewMarked"), Window.VIEW_MARKED)
-    self.viewCombo:addOptionWithData(getText("IGUI_TienLastSeenWhere_ViewPlaces"), Window.VIEW_PLACES)
     self.viewCombo:addOptionWithData(getText("IGUI_TienLastSeenWhere_ViewNear"), Window.VIEW_NEAR)
+    self.viewCombo:addOptionWithData(getText("IGUI_TienLastSeenWhere_ViewPlaces"), Window.VIEW_PLACES)
+    self.viewCombo:addOptionWithData(getText("IGUI_TienLastSeenWhere_ViewMarked"), Window.VIEW_MARKED)
     self.viewCombo.selected = 1
 
     local tickText = getText("IGUI_TienLastSeenWhere_SeeAll")
@@ -86,6 +91,7 @@ function Window:createPrivacyChildren(top, entryHeight, buttonTop, buttonHeight)
     self.pList.drawBorder = true
     self.pList.window = self
     self.pList.doDrawItem = Window.drawPrivacyRow
+    self.pList:setOnMouseDoubleClick(self, Window.onPrivacyShow)
     self:addChild(self.pList)
 
     self.pButtons = {}
@@ -132,8 +138,13 @@ function Window:onPrivacyShown()
     if not player then
         return
     end
-    if not LSW.Client.GetPrivacy(self.playerNum) and not LSW.Client.IsPrivacyBusy(self.playerNum) then
+    local privacy = LSW.Client.GetPrivacy(self.playerNum)
+    if not privacy and not LSW.Client.IsPrivacyBusy(self.playerNum) then
         LSW.Client.RequestPrivacy(player)
+    end
+    if privacy and privacy.fresh and self.privacyView ~= Window.VIEW_MARKED then
+        self.viewCombo:selectData(Window.VIEW_MARKED)
+        self.privacyView = Window.VIEW_MARKED
     end
     self:acknowledgeIfNeeded()
     if self.privacyView == Window.VIEW_PLACES then
@@ -178,7 +189,7 @@ function Window:selectedPrivacyRow()
 end
 
 local function rowKey(row)
-    if row.row == "place" then
+    if row.row == "place" or row.row == "container" then
         return LSW.MarkKey(LSW.MARK_PLACE, row.key)
     end
     if row.row == "item" and row.bag then
@@ -313,62 +324,141 @@ local function lootContainer(playerNum)
     return page.inventoryPane and page.inventoryPane.inventory or nil
 end
 
+local function lootButtons(playerNum)
+    local page = getPlayerLoot(playerNum)
+    return page and page.backpacks or {}
+end
+
+local function squareOfContainer(container)
+    local part = container:getVehiclePart()
+    if part then
+        return part:getVehicle():getSquare()
+    end
+    local bag = container:getContainingItem()
+    if bag then
+        local worldItem = bag:getWorldItem()
+        if worldItem then
+            return worldItem:getSquare()
+        end
+        local outer = bag:getContainer()
+        return outer and squareOfContainer(outer) or nil
+    end
+    local parent = container:getParent()
+    return parent and parent:getSquare() or nil
+end
+
+local function containerRow(playerNum, container, locator, title, shown)
+    local square = squareOfContainer(container)
+    local key = Menu.KeyOf(locator)
+    local mark = key and LSW.Client.GetMark(playerNum, LSW.MARK_PLACE, key)
+    return {
+        row = "container",
+        container = container,
+        locator = locator,
+        key = key or tostring(container),
+        label = title,
+        level = Menu.ContainerLevel(playerNum, locator) or LSW.PRIVATE_NONE,
+        shown = shown,
+        place = square and { x = square:getX(), y = square:getY(), z = square:getZ() } or {},
+        exposed = mark and mark.exposed or nil,
+        exposedBy = mark and mark.exposedBy or nil,
+        fresh = mark and mark.fresh == true,
+    }
+end
+
 function Window:nearRows(query, player)
     local rows = {}
     local playerNum = self.playerNum
-    local function walk(container, where, holder, out)
+    local walked = {}
+    local function walk(container, where, holder, out, q)
+        if walked[container] then
+            return
+        end
+        walked[container] = true
         local items = container:getItems()
         for i = 0, items:size() - 1 do
             local item = items:get(i)
             local row = itemRow(playerNum, item, where, holder)
-            if matches(row.label, query) then
+            if matches(row.label, q) then
                 out[#out + 1] = row
             end
             if row.bag then
-                walk(item:getInventory(), where, item:getDisplayName(), out)
+                walk(item:getInventory(), where, item:getDisplayName(), out, q)
             end
         end
     end
-    local mine = {}
-    walk(player:getInventory(), { inv = true }, nil, mine)
-    if #mine > 0 then
-        rows[#rows + 1] = { row = "header", label = getText("IGUI_TienLastSeenWhere_HeaderOnMe") }
-        for _, row in ipairs(mine) do
+    local function append(block)
+        for _, row in ipairs(block) do
             rows[#rows + 1] = row
         end
     end
-    local container = lootContainer(playerNum)
-    if container then
-        local floor = container == ISInventoryPage.GetFloorContainer(playerNum)
-        local where = nil
-        local title
-        if floor then
-            where = { floor = true }
-            title = getText("IGUI_TienLastSeenWhere_Floor")
-        else
-            local locator = LSW.Watch.Locate(player, container)
-            if locator then
-                where = { locator = locator }
-            end
-            title = getTextOrNull("IGUI_ContainerTitle_" .. tostring(container:getType())) or tostring(container:getType())
-        end
-        if where then
-            local found = {}
-            walk(container, where, nil, found)
-            if #found > 0 then
-                rows[#rows + 1] = { row = "header", label = title }
-                for _, row in ipairs(found) do
-                    rows[#rows + 1] = row
+    local mine = {}
+    walk(player:getInventory(), { inv = true }, nil, mine, query)
+    if #mine > 0 then
+        rows[#rows + 1] = { row = "header", label = getText("IGUI_TienLastSeenWhere_HeaderOnMe") }
+        append(mine)
+    end
+    local shownContainer = lootContainer(playerNum)
+    local floor = ISInventoryPage.GetFloorContainer(playerNum)
+    local blocks = {}
+    local floorBlock = nil
+    for _, button in ipairs(lootButtons(playerNum)) do
+        local container = button.inventory
+        if container and not walked[container] then
+            if container == floor then
+                local found = {}
+                walk(container, { floor = true }, nil, found, query)
+                if #found > 0 then
+                    floorBlock = { { row = "header", label = getText("IGUI_TienLastSeenWhere_Floor") } }
+                    for _, row in ipairs(found) do
+                        floorBlock[#floorBlock + 1] = row
+                    end
+                end
+            else
+                local locator = LSW.Watch.Locate(player, container)
+                if locator then
+                    local title = button.name or Menu.ContainerTitle(container)
+                    local labelMatches = matches(title, query)
+                    local found = {}
+                    walk(container, { locator = locator }, nil, found, labelMatches and "" or query)
+                    if labelMatches or #found > 0 then
+                        local shown = container == shownContainer
+                        local block
+                        if Menu.IsMarkable(locator) then
+                            block = { containerRow(playerNum, container, locator, title, shown) }
+                        else
+                            block = { { row = "header", label = title } }
+                        end
+                        for _, row in ipairs(found) do
+                            block[#block + 1] = row
+                        end
+                        if shown then
+                            table.insert(blocks, 1, block)
+                        else
+                            blocks[#blocks + 1] = block
+                        end
+                    end
                 end
             end
         end
+    end
+    for _, block in ipairs(blocks) do
+        append(block)
+    end
+    if floorBlock then
+        append(floorBlock)
     end
     return rows
 end
 
 local function nearSignature(player, playerNum)
     local count, sum = 0, 0
+    local walked = {}
     local function walk(container)
+        if walked[container] then
+            return
+        end
+        walked[container] = true
         local items = container:getItems()
         for i = 0, items:size() - 1 do
             local item = items:get(i)
@@ -380,11 +470,15 @@ local function nearSignature(player, playerNum)
         end
     end
     walk(player:getInventory())
-    local container = lootContainer(playerNum)
-    if container then
-        walk(container)
+    local buttons = lootButtons(playerNum)
+    local containers = {}
+    for _, button in ipairs(buttons) do
+        if button.inventory then
+            containers[#containers + 1] = tostring(button.inventory)
+            walk(button.inventory)
+        end
     end
-    return string.format("%d:%d:%s", count, sum, tostring(container))
+    return string.format("%d:%d:%s:%s", count, sum, tostring(lootContainer(playerNum)), table.concat(containers, ","))
 end
 
 function Window:rebuildPrivacyRows()
@@ -405,7 +499,10 @@ function Window:rebuildPrivacyRows()
     end
     self.pList:clear()
     for i, row in ipairs(rows) do
-        self.pList:addItem(row.label, row)
+        local item = self.pList:addItem(row.label, row)
+        if row.row == "place" or row.row == "container" then
+            item.height = PLACE_ROW
+        end
         if selectedKey and rowKey(row) == selectedKey then
             self.pList.selected = i
         end
@@ -419,12 +516,14 @@ function Window:updatePrivacyButtons()
     end
     local privacy = LSW.Client.GetPrivacy(self.playerNum)
     local row = self:selectedPrivacyRow()
-    local markable = row ~= nil and (row.row == "place" or row.row == "item") and privacy ~= nil and privacy.enabled
+    local markable = row ~= nil and (row.row == "place" or row.row == "item" or row.row == "container")
+        and privacy ~= nil and privacy.enabled
     local level = row and row.level or LSW.PRIVATE_NONE
     self.pButtons.me:setEnable(markable and level ~= LSW.PRIVATE_ME)
     self.pButtons.group:setEnable(markable and level ~= LSW.PRIVATE_GROUP)
     self.pButtons.none:setEnable(markable and level ~= LSW.PRIVATE_NONE)
-    self.pButtons.show:setEnable(row ~= nil and row.row == "place" and row.place.x ~= nil)
+    self.pButtons.show:setEnable(row ~= nil and (row.row == "container"
+        or (row.row == "place" and row.place.x ~= nil)))
 end
 
 function Window:setSelectedLevel(level)
@@ -433,7 +532,9 @@ function Window:setSelectedLevel(level)
     if not player or not row then
         return
     end
-    if row.row == "place" then
+    if row.row == "container" then
+        Menu.MarkContainer(player, row.locator, level)
+    elseif row.row == "place" then
         LSW.Client.SetMark(player, { kind = LSW.MARK_PLACE, key = row.key, level = level })
     elseif row.row == "item" then
         if row.bag and level == LSW.PRIVATE_NONE then
@@ -468,19 +569,15 @@ end
 function Window:onPrivacyShow()
     self:releaseKeyboard()
     local row = self:selectedPrivacyRow()
-    if row and row.row == "place" and row.place.x then
+    if row and row.row == "container" then
+        LSW.Actions.OpenLoot(self:player(), row.container)
+    elseif row and row.row == "place" and row.place.x then
         LSW.Actions.Show(self:player(), row.place, nil)
     end
 end
 
 function Window:onPrivacyEvent(event)
-    local reason = string.match(event, "^privacyRefused:(.+)$")
-    if reason then
-        local player = self:player()
-        local text = getTextOrNull("IGUI_TienLastSeenWhere_Refused_" .. reason)
-        if player and text then
-            HaloTextHelper.addBadText(player, text)
-        end
+    if string.match(event, "^privacyRefused:") then
         return
     end
     local privacy = LSW.Client.GetPrivacy(self.playerNum)
@@ -606,19 +703,36 @@ function Window.drawPrivacyRow(list, y, item, alt)
         if data.holder then
             parts[#parts + 1] = data.holder
         end
-    elseif data.row == "place" then
+    elseif data.row == "place" or data.row == "container" then
         local place = data.place
-        if player and place.x then
-            local distance = LSW.DistanceTo(player:getX(), player:getY(), place.x + 0.5, place.y + 0.5)
-            if distance < 1.5 then
-                parts[#parts + 1] = getText("IGUI_TienLastSeenWhere_Here")
-            else
-                parts[#parts + 1] = getText("IGUI_TienLastSeenWhere_Tiles", string.format("%d", math.floor(distance + 0.5)))
-            end
+        x = ARROW_X + ARROW_COLUMN + 6
+        if data.row == "container" and list.selected ~= item.index then
+            list:drawRect(0, rowTop, list:getWidth(), rowBottom - rowTop, 0.25, 0.2, 0.2, 0.2)
         end
-        if data.remembered == false then
+        if player and place.x then
+            local arrowHalf = item.height * 0.4
+            if fits(y + item.height / 2 - arrowHalf, y + item.height / 2 + arrowHalf) then
+                window:drawArrow(list, y, item.height, place, player)
+            end
+            local distance = LSW.DistanceTo(player:getX(), player:getY(), place.x + 0.5, place.y + 0.5)
+            local where
+            if distance < 1.5 then
+                where = getText("IGUI_TienLastSeenWhere_Here")
+            else
+                where = getText("IGUI_TienLastSeenWhere_Tiles", string.format("%d", math.floor(distance + 0.5)))
+            end
+            local floors = Window.FloorText(player, place)
+            if floors then
+                where = where .. ", " .. floors
+            end
+            parts[#parts + 1] = where
+        end
+        if data.shown then
+            parts[#parts + 1] = getText("IGUI_TienLastSeenWhere_OpenNow")
+        end
+        if data.row == "place" and data.remembered == false then
             parts[#parts + 1] = getText("IGUI_TienLastSeenWhere_NotRemembered")
-        elseif place.t then
+        elseif data.row == "place" and place.t then
             parts[#parts + 1] = Window.AgeText(place.t)
         end
     end

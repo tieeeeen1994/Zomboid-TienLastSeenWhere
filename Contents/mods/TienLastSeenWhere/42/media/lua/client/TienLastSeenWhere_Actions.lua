@@ -170,6 +170,13 @@ end
 
 local function openLoot(player, place)
     local container = Actions.FindContainer(place)
+    if not container and place.kind == LSW.KIND_FLOOR then
+        container = ISInventoryPage.GetFloorContainer(player:getPlayerNum())
+    end
+    Actions.OpenLoot(player, container)
+end
+
+function Actions.OpenLoot(player, container)
     local loot = getPlayerLoot(player:getPlayerNum())
     if not loot then
         return
@@ -177,10 +184,6 @@ local function openLoot(player, place)
     if container then
         loot:setForceSelectedContainer(container, 1500)
         loot:selectButtonForContainer(container)
-    elseif place.kind == LSW.KIND_FLOOR then
-        local floor = ISInventoryPage.GetFloorContainer(player:getPlayerNum())
-        loot:setForceSelectedContainer(floor, 1500)
-        loot:selectButtonForContainer(floor)
     end
     loot:setVisible(true)
     loot.collapseCounter = 0
