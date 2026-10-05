@@ -306,7 +306,7 @@ end
 
 local function onSeenContainer(player, args)
     local resolved = resolve(player, args)
-    if not resolved or not resolved.square then
+    if not resolved or not resolved.square or LSW.IsLockedTo(player, resolved.container) then
         return
     end
     local square = resolved.square
@@ -1004,7 +1004,8 @@ local function itemInReach(player, id, args)
     if type(args.locator) == "table" then
         local resolved = resolve(player, args.locator)
         local square = resolved and resolved.square
-        if square and near(player, square:getX(), square:getY(), Server.CONTAINER_REACH) then
+        if square and near(player, square:getX(), square:getY(), Server.CONTAINER_REACH)
+            and not LSW.IsLockedTo(player, resolved.container) then
             item = resolved.container:getItemWithIDRecursiv(id)
             if item then
                 return item, { locator = args.locator }
@@ -1039,6 +1040,9 @@ local function locatedPlaceMark(player, locator, level)
     local square = resolved.square
     if level ~= LSW.PRIVATE_NONE and not near(player, square:getX(), square:getY(), Server.CONTAINER_REACH) then
         return "far"
+    end
+    if level ~= LSW.PRIVATE_NONE and LSW.IsLockedTo(player, resolved.container) then
+        return "locked"
     end
     local ok, reason = Privacy.Set(Store.KeyOf(player), {
         kind = LSW.MARK_PLACE,

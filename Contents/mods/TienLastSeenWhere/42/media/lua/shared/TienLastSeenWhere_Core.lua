@@ -162,6 +162,22 @@ function LSW.ObjectKey(x, y, z, sprite, containerType)
     return "o:" .. LSW.SquareKey(x, y, z) .. ":" .. tostring(sprite) .. ":" .. tostring(containerType)
 end
 
+function LSW.IsLockedTo(player, container)
+    local role = player and player:getRole()
+    if role and Capability and Capability.CanOpenLockedDoors and role:hasCapability(Capability.CanOpenLockedDoors) then
+        return false
+    end
+    while container do
+        local bag = container:getContainingItem()
+        if not bag then
+            local parent = container:getParent()
+            return instanceof(parent, "IsoThumpable") and parent:isLockedToCharacter(player)
+        end
+        container = bag:getContainer()
+    end
+    return false
+end
+
 function LSW.BuildingKey(square)
     local building = square and square:getBuilding()
     local def = building and building:getDef()

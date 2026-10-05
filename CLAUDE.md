@@ -271,6 +271,20 @@ listed under "To verify".
 - `media/sandbox-options.txt`: `SearchRule` (enum 5, default 1), `FloorRule` (enum 3: in sight / in reach / off),
   `SmallItemDistance` (default 4), `ForgetAfterDays` (default 0 = never).
 
+## Locked containers
+
+`LSW.IsLockedTo(player, container)` (Core) = vanilla's `IsoThumpable:isLockedToCharacter(player)` on the container's
+holder, walking up through bags, false for a role with `CanOpenLockedDoors` (Java skips that capability only on a
+client, so the server needs it spelt out). A padlock stores no owner, only `keyId` / the code, so the rule is "can open
+it now", like vanilla: a key in the inventory passes, a combination lock blocks everyone until it is taken off.
+Vanilla already keeps a locked crate out of the loot pane, so normal sightings never covered one; the leaks were the
+mod's own paths, which walked loot buttons (a locked crate keeps its button, lock icon, and its contents are on the
+client: `checkExplored` runs on it and player-built crates come with the chunk). Now checked in: the Nearby list
+(skips the container and every bag in it), Take (vanilla transfers and the server's transactions check no lock), the
+Privacy menus (world and loot button), Watch's report, and on the server `seenContainer`, the item-mark locator and
+`locatedPlaceMark` (reason `locked`; unmarking still works, and the Marked list unmarks by key anyway). Memories from
+before the lock stay in Find (Take disabled) until the gone check or `ForgetAfterDays`.
+
 ## The arrow and the highlight
 
 - `Arrow.SetTarget(playerNum, place, fullType)` (Show, Go there, double-click; a second call for the same place keeps
@@ -315,6 +329,9 @@ listed under "To verify".
   (the window is now 720 x 540), ISTickBox placement on the right, the Find column header lining up with the rows
   (scroll bar shown and hidden), `ISButton:setTitle` for "Privacy (!)", exposure appearing for the marker after
   another player opens a marked container, and clearing once the Marked list is viewed.
+- Locks: a padlocked crate without the key is not in the Nearby list, has no Privacy entry, Take stays disabled for
+  a memory of it; with the key (or after taking a combination lock off) it is remembered on opening as usual; an
+  admin with `CanOpenLockedDoors` opening one gets it remembered (server-side capability check).
 - Privacy menus: right-click a counter (tick follows the mark), a fridge (two entries), a loot window container
   button (object and vehicle; the menu must not flash closed), a bag button and items; marking an empty, unopened
   crate; "far" from 11 tiles; the Nearby list with many counters (arrows, "open", Show selecting it in the loot window).

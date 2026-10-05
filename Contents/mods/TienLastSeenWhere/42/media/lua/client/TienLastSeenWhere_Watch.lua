@@ -186,7 +186,7 @@ local function reportContainer(player, container)
         Watch.SeeSquares(player, reachableFloorSquares(player), true)
         return
     end
-    local locator = Watch.Locate(player, container)
+    local locator = not LSW.IsLockedTo(player, container) and Watch.Locate(player, container)
     if locator then
         LSW.ToServer(player, LSW.CMD_SEEN_CONTAINER, locator)
     end

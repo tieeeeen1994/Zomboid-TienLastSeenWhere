@@ -139,7 +139,7 @@ function Actions.Takeable(player, place, fullType)
         return worldItem and { worldItem = worldItem } or nil
     end
     local container = Actions.FindContainer(place)
-    if not container or not lootHas(player:getPlayerNum(), container) then
+    if not container or LSW.IsLockedTo(player, container) or not lootHas(player:getPlayerNum(), container) then
         return nil
     end
     local item = container:getFirstTypeRecurse(fullType)

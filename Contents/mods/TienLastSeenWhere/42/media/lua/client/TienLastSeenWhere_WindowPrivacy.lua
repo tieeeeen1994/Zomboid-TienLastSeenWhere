@@ -444,7 +444,7 @@ function Window:nearRows(query, player)
     local floorBlock = nil
     for _, button in ipairs(lootButtons(playerNum)) do
         local container = button.inventory
-        if container and not walked[container] then
+        if container and not walked[container] and not LSW.IsLockedTo(player, container) then
             if container == floor then
                 local found = {}
                 walk(container, { floor = true }, nil, found, query)

@@ -64,6 +64,7 @@
     "IGUI_TienLastSeenWhere_Refused_invalid": "That cannot be marked.",
     "IGUI_TienLastSeenWhere_Refused_off": "Privacy is turned off on this server.",
     "IGUI_TienLastSeenWhere_Refused_far": "Too far away. Get closer to mark it.",
+    "IGUI_TienLastSeenWhere_Refused_locked": "It is locked.",
     "IGUI_TienLastSeenWhere_MarkedMe": "Private: only me",
     "IGUI_TienLastSeenWhere_MarkedGroup": "Private: my group",
     "IGUI_TienLastSeenWhere_MarkedShared": "Shared again",

@@ -158,7 +158,7 @@ local function objectContainers(player, worldobjects)
             seenObjects[object] = true
             for c = 0, object:getContainerCount() - 1 do
                 local container = object:getContainerByIndex(c)
-                local locator = LSW.Watch.Locate(player, container)
+                local locator = not LSW.IsLockedTo(player, container) and LSW.Watch.Locate(player, container)
                 if locator and locator.kind == LSW.KIND_OBJECT then
                     found[#found + 1] = { container = container, locator = locator }
                 end
@@ -243,7 +243,7 @@ function ISInventoryPage:onBackpackRightMouseDown(x, y)
         return result
     end
     local player = getSpecificPlayer(page.player)
-    local locator = player and LSW.Watch.Locate(player, container)
+    local locator = player and not LSW.IsLockedTo(player, container) and LSW.Watch.Locate(player, container)
     if not locator or (locator.kind ~= LSW.KIND_OBJECT and locator.kind ~= LSW.KIND_VEHICLE) then
         return result
     end

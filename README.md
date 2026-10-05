@@ -4,7 +4,8 @@ Forgot where you saw that hammer? Type an item's name and see every container an
 then follow an arrow on the floor back to it.
 
 - **Only what you have seen.** A container counts once you have looked inside it in the loot window. Containers you never
-  opened are never searched. Items lying on the floor count once they are in sight (small ones only up close, and in the
+  opened are never searched, and a padlocked crate counts only for someone who can open it (key in hand), as in the
+  loot window; the mod never lists, marks or takes from a container locked to you. Items lying on the floor count once they are in sight (small ones only up close, and in the
   dark only within reach), or when search mode spots them.
 - **Search as you type.** Results are grouped by item, then by place, in columns you can resize and sort by: a small
   arrow pointing the way on screen, the place (counter, fridge, car trunk, corpse, floor, with the room), how far and
