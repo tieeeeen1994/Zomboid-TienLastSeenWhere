@@ -156,6 +156,24 @@ listed under "To verify".
     still learn of it from them until the marker sees the place again (old data, accepted). `_world` keeps only the
     newest snapshot per place: if the marker looked last, an older sighting by someone else is no longer in it (it
     still reaches that player's faction under Shared).
+- `server/TienLastSeenWhere_Manage.lua`: admin memory management, one command `manage {op}` (registered through
+  `Server.AddHandler`; `Server.ResultOf`, `VehiclesBySqlId`, `PlayersHere` are exported for it). Allowed =
+  `Privacy.CanSeeAll` (`role:hasAdminTool()`, single player `-debug`), checked on every op except `access`, which
+  answers `{allowed}`; any other op from someone else gets `{refused}`. Ops: `users {usernames}` (the client's list
+  plus everyone online; `Store.Describe` opens each file and reads the header and whether a place line follows, so
+  an emptied file is not listed; Lua cannot list folders, hence the names come from the client), `summary {username}`
+  (per type: count `c`, places `p`), `places {username, fullType}` (nearest 300 to the admin, `total`), `forget
+  {username, types, at = {{key, type}}, world}`, `wipe {username, world}`. Lists go in chunks (`part`, `last`).
+  Forget and wipe run as uniquely named jobs (`Jobs.Start` replaces a job of the same name, which would kill a
+  half-done forget), wait for the record to load, and log to the console and the server's admin log.
+  - Only the player's own memory by default (user's choice, 2026-10-20). With `world`, `_world` places whose `by` is
+    that player lose the same types (wipe: are removed); a place someone else saw last is theirs and stays.
+  - `Store.ForgetTypes` copies the place before changing it: `remember` puts the **same** entry table into the
+    player's record and `_world`, so editing in place would change the shared copy too (tested with lupa).
+  - `Store.Wipe` = `clear` without the clear listeners: privacy marks stay (they protect the player's things, an
+    admin wiping memory should not unprotect them), and hours survived are left alone (new-character check).
+  - Forgetting is not blocking: the next sighting brings it back. A floor square in sight is resent only when its
+    signature changes, so floors the player is standing by come back only when something there changes.
 - `client/TienLastSeenWhere_WindowPrivacy.lua`: the Privacy tab (methods added to `LSW.Window`; the window builds it in
   `createChildren` when `createPrivacyChildren` exists and shows the tab only while `LSW.IsPrivacyUseful()`: option
   on and the sandbox not forcing What I have seen). Filter box, view combo (Nearby and on me, the default /
@@ -176,6 +194,19 @@ listed under "To verify".
   at the same gap), X/Y distance within a floor, places without a position last. The user asked for Z to never mix
   into the distance. Sorted only when the list is rebuilt, so it does not reshuffle while walking.
   Mark results (done or refused) show as halo text from `Client` (`onPrivacy`), so they also appear for the menus.
+- `client/TienLastSeenWhere_WindowManage.lua`: the Manage tab (admins only; methods on `LSW.Window`, built when
+  `createManageChildren` exists). The window sends `manage {op = "access"}` on every open and shows the tab while the
+  reply allows it; tabs are placed by `Window:layoutTabs` (visible ones in `Window.TAB_ORDER`, no gaps). Left: player
+  filter + list (online first, username over character name). Players = the server's account list where the admin
+  has `Capability.SeeNetworkUsers` (vanilla Users window: `requestUsers()`, then `getUsers()` once
+  `OnNetworkUsersReceived` fires; the request is also sent at once with the previous list), plus everyone online
+  (server side), plus names typed in the filter and confirmed with Enter (`onCommandEntered`). Right: item filter +
+  the player's summary, one row per type with a tick box, an expander (+/-, loads that type's places on demand) and
+  "xN, n places"; place rows (tick box, arrow, place, distance / floors, age, count). Ticking a type covers its places
+  (drawn faded). Forget = ticked rows, else the selected row; Forget everything; Show (place rows, double-click too);
+  Refresh; tick box "Also from shared knowledge" (off by default). Both forgets ask first (`ISModalDialog`, names up
+  to 5 then "and n more"); the result shows as a status line next to the buttons for 10 s (no halo text). Client
+  state: `Client.GetManage(playerNum)`, requests per slot (`Client.ManageSlot`: the op, or `places:<user>\n<type>`).
 - `client/TienLastSeenWhere_PrivacyMenu.lua`: Privacy in right-click menus (the user could not find the container to
   mark in the tab). World menu: "Privacy: <container>" per container of a clicked object (`OnFillWorldObjectContextMenu`,
   objects only, more than 3 go under one "Privacy" submenu), submenu Only me / My group / Share with tooltips and a tick
@@ -336,6 +367,12 @@ before the lock stay in Find (Take disabled) until the gone check or `ForgetAfte
   button (object and vehicle; the menu must not flash closed), a bag button and items; marking an empty, unopened
   crate; "far" from 11 tiles; the Nearby list with many counters (arrows, "open", Show selecting it in the loot window).
 
+- Manage tab: hidden for a normal player and in single player without `-debug`; the account list for an admin
+  (offline players with memories listed, ones without not), a moderator without SeeNetworkUsers (only online players
+  plus typed names); forgetting a type, a single place, ticked mixes, Forget everything, each with and without
+  "Also from shared knowledge" (check the Find tab of the player and of someone under Opened by anyone); the forgotten
+  player's open window catching up within 15 s; layout at 720 wide and at the minimum width (status text vs tick box).
+
 ## Decisions
 
 - Memory lives on the server (the user's choice): the client never sends contents, only where it looked.
@@ -344,6 +381,10 @@ before the lock stay in Find (Take disabled) until the gone check or `ForgetAfte
 - Items other players drop count once seen.
 - Privacy marks are per character (reset on death), sharing levels only me / my group, admins may tick a box to see
   everything, the whole feature has a sandbox option (on by default).
+- Admins manage memories in a Manage tab (user's request, 2026-10-20): forget item types, single places or everything,
+  only the player's own memory unless "Also from shared knowledge" is ticked. Searches never copy anything into the
+  searcher's memory, so whoever found it through that player loses it too (except under Opened by anyone, hence the
+  tick box). No sandbox option: it is an admin tool, gated by the role.
 - No Everything rule and no live scan (user's call); search rules are Mine / Shared / Opened by anyone.
 - MemoryRefresh (sandbox, default when opened) and FoundByName (sandbox, default username) are server choices.
 - Marked exact items do not show where they are (the marker knows; the Find tab finds it). Corpse keys by index stay:

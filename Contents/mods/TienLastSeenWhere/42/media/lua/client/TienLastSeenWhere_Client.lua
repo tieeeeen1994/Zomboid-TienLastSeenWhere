@@ -34,6 +34,15 @@ local function stateOf(playerNum)
             places = {},
             placesPending = {},
             seeAll = false,
+            manage = {
+                allowed = false,
+                requests = {},
+                sentMs = {},
+                pending = {},
+                users = nil,
+                summary = nil,
+                places = {},
+            },
         }
         states[playerNum] = state
     end
@@ -172,6 +181,92 @@ function Client.RequestPlaces(player)
     LSW.ToServer(player, LSW.CMD_PLACES, { request = state.placesRequest, playerNum = player:getPlayerNum() })
 end
 
+local function manageSlot(op, args)
+    if op == "places" then
+        return "places:" .. tostring(args.username) .. "\n" .. tostring(args.fullType)
+    end
+    return op
+end
+
+Client.ManageSlot = manageSlot
+
+function Client.GetManage(playerNum)
+    return stateOf(playerNum).manage
+end
+
+function Client.RequestManage(player, op, args)
+    local manage = stateOf(player:getPlayerNum()).manage
+    args = args or {}
+    args.op = op
+    args.request = newRequest()
+    args.playerNum = player:getPlayerNum()
+    local slot = manageSlot(op, args)
+    manage.requests[slot] = args.request
+    manage.sentMs[slot] = getTimestampMs()
+    manage.pending[slot] = {}
+    LSW.ToServer(player, LSW.CMD_MANAGE, args)
+end
+
+function Client.IsManageBusy(playerNum, slot)
+    local manage = stateOf(playerNum).manage
+    local now = getTimestampMs()
+    if slot then
+        return manage.sentMs[slot] ~= nil and now - manage.sentMs[slot] < Client.TIMEOUT_MS
+    end
+    for _, ms in pairs(manage.sentMs) do
+        if now - ms < Client.TIMEOUT_MS then
+            return true
+        end
+    end
+    return false
+end
+
+local MANAGE_LISTS = { users = "users", summary = "types", places = "places" }
+
+local function onManage(state, args)
+    local manage = state.manage
+    local op = args.op
+    if type(op) ~= "string" then
+        return
+    end
+    if args.refused then
+        manage.allowed = false
+        manage.sentMs = {}
+        notify(state, "manage:access")
+        return
+    end
+    local slot = manageSlot(op, args)
+    if args.request ~= manage.requests[slot] then
+        return
+    end
+    local field = MANAGE_LISTS[op]
+    if field then
+        local pending = manage.pending[slot] or {}
+        for _, value in pairs(args[field] or {}) do
+            pending[#pending + 1] = value
+        end
+        manage.pending[slot] = pending
+        if not args.last then
+            manage.sentMs[slot] = getTimestampMs()
+            return
+        end
+        manage.pending[slot] = nil
+        if op == "users" then
+            manage.users = pending
+        elseif op == "summary" then
+            manage.summary = { username = args.username, types = pending }
+        else
+            manage.places[slot] = { places = pending, total = tonumber(args.total) or #pending }
+        end
+    elseif op == "access" then
+        manage.allowed = args.allowed == true
+    else
+        manage.result = args
+    end
+    manage.sentMs[slot] = nil
+    notify(state, "manage:" .. op)
+end
+
 local function onSummary(state, args)
     if args.request ~= state.summaryRequest then
         return
@@ -282,6 +377,8 @@ function Client.Handle(player, command, args)
         onPrivacy(state, args)
     elseif command == LSW.REPLY_PLACES then
         onPlaces(state, args)
+    elseif command == LSW.REPLY_MANAGE then
+        onManage(state, args)
     end
 end
 

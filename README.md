@@ -25,6 +25,10 @@ then follow an arrow on the floor back to it.
   If someone from your own faction or safehouse finds it, they mention it: the Privacy tab shows "Privacy (!)" and
   the mark says who and when. Other factions never tell you. Marks are
   forgotten when your character dies. Admins can tick a box to see private things anyway.
+- **Manage (admins).** A Manage tab lists every player who remembers something. Pick one to see what they remember,
+  then make them forget an item everywhere, at single places, or everything. Only their own memory by default; tick
+  "Also from shared knowledge" to also remove what they saw last from what Opened by anyone finds. Their privacy
+  marks are kept, and seeing something again brings it back.
 - **Gone is gone.** Walk past a container, corpse, bag or floor spot you remember and it is no longer there (smashed,
   burnt, moved, picked up): it is forgotten.
 

@@ -11,10 +11,12 @@ LSW.CMD_FIND = "find"
 LSW.CMD_PRIVACY = "privacy"
 LSW.CMD_PRIVACY_SET = "privacySet"
 LSW.CMD_PLACES = "places"
+LSW.CMD_MANAGE = "manage"
 LSW.REPLY_SUMMARY = "summary"
 LSW.REPLY_FIND = "find"
 LSW.REPLY_PRIVACY = "privacy"
 LSW.REPLY_PLACES = "places"
+LSW.REPLY_MANAGE = "manage"
 
 LSW.RULE_PLAYER = 1
 LSW.RULE_MINE = 2

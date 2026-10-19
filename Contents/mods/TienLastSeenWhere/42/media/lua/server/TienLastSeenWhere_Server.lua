@@ -1281,6 +1281,10 @@ local function onEveryTenMinutes()
     end
 end
 
+Server.ResultOf = resultOf
+Server.VehiclesBySqlId = vehiclesBySqlId
+Server.PlayersHere = playersHere
+
 local handlers = {
     [LSW.CMD_SEEN_CONTAINER] = queueIngest(onSeenContainer),
     [LSW.CMD_SEEN_SQUARES] = queueIngest(onSeenSquares),
@@ -1290,6 +1294,10 @@ local handlers = {
     [LSW.CMD_PRIVACY_SET] = onPrivacySet,
     [LSW.CMD_PLACES] = onPlaces,
 }
+
+function Server.AddHandler(command, handler)
+    handlers[command] = handler
+end
 
 function Server.Handle(player, command, args)
     local handler = handlers[command]

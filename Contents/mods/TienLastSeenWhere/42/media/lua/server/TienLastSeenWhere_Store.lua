@@ -242,8 +242,8 @@ local function stopLoading(record)
     end
 end
 
-local function clear(record)
-    if record.key ~= Store.WORLD_KEY then
+local function clear(record, keepMarks)
+    if record.key ~= Store.WORLD_KEY and not keepMarks then
         for _, listener in ipairs(Store.clearListeners) do
             listener(record.key)
         end
@@ -430,6 +430,73 @@ function Store.Reset(key)
     local record = Store.Get(key)
     clear(record)
     record.hours = 0
+end
+
+function Store.Wipe(key)
+    clear(Store.Get(key), true)
+end
+
+function Store.Describe(key)
+    local record = records[key]
+    if record then
+        local remembers = record.loading == true
+        for _ in pairs(record.places) do
+            remembers = true
+            break
+        end
+        return { name = record.name, remembers = remembers }
+    end
+    local reader = getFileReader(fileName(key), false)
+    if not reader then
+        return nil
+    end
+    local header = reader:readLine()
+    local name = nil
+    local remembers = header ~= nil
+    if header and string.sub(header, 1, 2) == "V\t" then
+        name = unfield(LSW.Split(header, "\t")[4])
+        remembers = reader:readLine() ~= nil
+    end
+    reader:close()
+    return { name = name, remembers = remembers }
+end
+
+function Store.ForgetTypes(record, key, types)
+    local place = record.places[key]
+    if not place then
+        return 0
+    end
+    local items = {}
+    local ids = nil
+    local removed = 0
+    local left = false
+    for fullType, count in pairs(place.items) do
+        if types[fullType] then
+            removed = removed + count
+        else
+            items[fullType] = count
+            left = true
+            if place.ids and place.ids[fullType] then
+                ids = ids or {}
+                ids[fullType] = place.ids[fullType]
+            end
+        end
+    end
+    if removed == 0 then
+        return 0
+    end
+    if not left then
+        Store.Remove(record, key)
+        return removed
+    end
+    local copy = {}
+    for field, value in pairs(place) do
+        copy[field] = value
+    end
+    copy.items = items
+    copy.ids = ids
+    Store.Put(record, copy)
+    return removed
 end
 
 function Store.WaitLoaded(record)

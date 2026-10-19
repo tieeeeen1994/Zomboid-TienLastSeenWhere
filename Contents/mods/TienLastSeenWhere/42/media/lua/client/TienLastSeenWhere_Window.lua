@@ -41,6 +41,8 @@ Window.SCOPE_ON_ME = 4
 
 Window.TAB_FIND = "find"
 Window.TAB_PRIVACY = "privacy"
+Window.TAB_MANAGE = "manage"
+Window.TAB_ORDER = { Window.TAB_FIND, Window.TAB_PRIVACY, Window.TAB_MANAGE }
 
 Window.PAD = PAD
 Window.ROW = ROW
@@ -318,6 +320,7 @@ function Window:createChildren()
     for _, spec in ipairs({
         { Window.TAB_FIND, "IGUI_TienLastSeenWhere_TabFind" },
         { Window.TAB_PRIVACY, "IGUI_TienLastSeenWhere_TabPrivacy", "IGUI_TienLastSeenWhere_TabPrivacyFound" },
+        { Window.TAB_MANAGE, "IGUI_TienLastSeenWhere_TabManage" },
     }) do
         local text = getText(spec[2])
         local width = getTextManager():MeasureStringX(UIFont.Small, text) + 24
@@ -442,6 +445,10 @@ function Window:createChildren()
     self.privacyWidgets = {}
     if self.createPrivacyChildren then
         self:createPrivacyChildren(top, entryHeight, buttonTop, buttonHeight)
+    end
+    self.manageWidgets = {}
+    if self.createManageChildren then
+        self:createManageChildren(top, entryHeight, buttonTop, buttonHeight)
     end
     self:setTab(Window.TAB_FIND)
 end
@@ -574,8 +581,39 @@ function Window:privacyAvailable()
     return self.createPrivacyChildren ~= nil and LSW.IsPrivacyUseful()
 end
 
+function Window:manageAvailable()
+    return self.createManageChildren ~= nil and LSW.Client.GetManage(self.playerNum).allowed
+end
+
+function Window:tabAvailable(tab)
+    if tab == Window.TAB_PRIVACY then
+        return self:privacyAvailable()
+    end
+    if tab == Window.TAB_MANAGE then
+        return self:manageAvailable()
+    end
+    return true
+end
+
+function Window:layoutTabs()
+    local x = PAD
+    for _, tab in ipairs(Window.TAB_ORDER) do
+        local button = self.tabButtons and self.tabButtons[tab]
+        if button then
+            local available = self:tabAvailable(tab)
+            if button:isVisible() ~= available then
+                button:setVisible(available)
+            end
+            if available then
+                button:setX(x)
+                x = x + button:getWidth() + PAD / 2
+            end
+        end
+    end
+end
+
 function Window:setTab(tab)
-    if tab == Window.TAB_PRIVACY and not self:privacyAvailable() then
+    if not self:tabAvailable(tab) then
         tab = Window.TAB_FIND
     end
     if tab ~= Window.TAB_PRIVACY then
@@ -588,6 +626,9 @@ function Window:setTab(tab)
     for _, widget in ipairs(self.privacyWidgets or {}) do
         widget:setVisible(tab == Window.TAB_PRIVACY)
     end
+    for _, widget in ipairs(self.manageWidgets or {}) do
+        widget:setVisible(tab == Window.TAB_MANAGE)
+    end
     for name, button in pairs(self.tabButtons or {}) do
         if name == tab then
             button.backgroundColor = { r = 0.35, g = 0.35, b = 0.35, a = 1 }
@@ -597,11 +638,11 @@ function Window:setTab(tab)
             button.borderColor = { r = 0.7, g = 0.7, b = 0.7, a = 0.4 }
         end
     end
-    if self.tabButtons and self.tabButtons[Window.TAB_PRIVACY] then
-        self.tabButtons[Window.TAB_PRIVACY]:setVisible(self:privacyAvailable())
-    end
+    self:layoutTabs()
     if tab == Window.TAB_PRIVACY then
         self:onPrivacyShown()
+    elseif tab == Window.TAB_MANAGE then
+        self:onManageShown()
     elseif self.entry and self:isVisible() then
         self.entry:focus()
     end
@@ -874,11 +915,8 @@ function Window:updateButtons()
 end
 
 function Window:releaseKeyboard()
-    if self.entry then
-        self.entry:unfocus()
-    end
-    if self.pEntry then
-        self.pEntry:unfocus()
+    for _, entry in pairs({ self.entry, self.pEntry, self.mPlayerEntry, self.mItemEntry }) do
+        entry:unfocus()
     end
 end
 
@@ -921,7 +959,7 @@ function Window:onRowDoubleClick(item)
     end
 end
 
-function Window:drawArrow(list, y, height, place, player)
+function Window:drawArrow(list, y, height, place, player, arrowX)
     local tex = self.arrowTexture
     if not tex then
         return
@@ -930,7 +968,7 @@ function Window:drawArrow(list, y, height, place, player)
     local dy = place.y + 0.5 - player:getY()
     local distance = math.sqrt(dx * dx + dy * dy)
     local c = LSW.Options.GetArrowColour()
-    local localX = ARROW_X + ARROW_COLUMN / 2
+    local localX = (arrowX or ARROW_X) + ARROW_COLUMN / 2
     local localY = y + height / 2
     if distance < 1.5 then
         list:drawRect(localX - 4, localY - 4, 8, 8, 1, c.r, c.g, c.b)
@@ -1052,14 +1090,16 @@ function Window:prerender()
         self.summaryMs = now
         LSW.Client.RequestSummary(player)
     end
-    if self.tab == Window.TAB_PRIVACY and not self:privacyAvailable() then
+    if not self:tabAvailable(self.tab) then
         self:setTab(Window.TAB_FIND)
     end
-    if self.tabButtons[Window.TAB_PRIVACY] then
-        self.tabButtons[Window.TAB_PRIVACY]:setVisible(self:privacyAvailable())
-    end
+    self:layoutTabs()
     if self.tab == Window.TAB_PRIVACY then
         self:prerenderPrivacy(now)
+        return
+    end
+    if self.tab == Window.TAB_MANAGE then
+        self:prerenderManage(now)
         return
     end
     self:syncRuleCombo()
@@ -1091,6 +1131,10 @@ function Window:render()
     end
     if self.tab == Window.TAB_PRIVACY then
         self:renderPrivacy()
+        return
+    end
+    if self.tab == Window.TAB_MANAGE then
+        self:renderManage()
         return
     end
     self:renderHeaderEdge()
@@ -1154,6 +1198,12 @@ function Window:drawSpinner(cx, cy)
 end
 
 function Window:onClientEvent(event)
+    if string.sub(event, 1, 7) == "manage:" then
+        if self.onManageEvent then
+            self:onManageEvent(string.sub(event, 8))
+        end
+        return
+    end
     if event == "privacy" or event == "places" or string.sub(event, 1, 15) == "privacyRefused:" then
         if self.onPrivacyEvent then
             self:onPrivacyEvent(event)
@@ -1171,12 +1221,7 @@ end
 function Window:close()
     Jobs.Cancel(self:jobName())
     self.matching = false
-    if self.entry then
-        self.entry:unfocus()
-    end
-    if self.pEntry then
-        self.pEntry:unfocus()
-    end
+    self:releaseKeyboard()
     self.freshKeys = nil
     LSW.Client.Unlisten(self.playerNum, "window")
     ISCollapsableWindow.close(self)
@@ -1195,6 +1240,7 @@ function Window:open()
     if LSW.IsPrivacyEnabled() then
         LSW.Client.RequestPrivacy(self:player())
     end
+    LSW.Client.RequestManage(self:player(), "access")
     self:refreshResults()
     self:setTab(self.tab)
 end
