@@ -66,7 +66,6 @@ function Options.SetNameFormatIndex(index)
     end
 end
 
--- The name the finder is shown by: the player's choice, else the server's Found by setting.
 function Options.GetNameFormat()
     local index = Options.GetNameFormatIndex()
     if index == NAME_FORMAT_USERNAME then

@@ -34,7 +34,9 @@ listed under "To verify".
   forename+surname, so each character differs) plus `_world` (latest snapshot of every place anyone saw, used by the
   Opened by anyone rule). Files `Zomboid/Lua/TienLastSeenWhere/<save>/<key>.txt` on the server (`getFileWriter`
   makes the folders; only .txt/.ini/.cfg/.log/.json allowed). Lines: `V\t2\thoursSurvived\tcharacterName`
-  (the name for the Found by sandbox option, refreshed by `ForPlayer` from the descriptor; `Store.NameOf`), then
+  (the name for the Found by sandbox option, refreshed by `ForPlayer` from the descriptor; `Store.NameOf`; also kept in
+  the names index `_names.txt`, lines `username\tcharacterName`, read once, filled from `ForPlayer`, record loads and
+  `Describe`, written with the save pass when it changed), then
   `P\tkey\tkind\tx\ty\tz\ttype\troom\tbuilding\tt\tBase.A=2;Base.B=1\tparents\tids\tby\ttouch` (`-` = empty).
   Version 2 added the last four (`by` = username of whoever took the snapshot, for privacy and Found by; `touch` =
   last time the owner stood next to it, see MemoryRefresh; expiry uses `max(t, touch)`): `parents` (bags only) = the keys of what holds the bag, nearest first, `|`-separated, the last one
@@ -87,8 +89,12 @@ listed under "To verify".
     Only up close on purpose: you notice it is gone by being there. Other players' records are not touched (their
     memory), so they forget it when they pass by themselves. Before this, nothing ever noticed a removed container:
     with `ForgetAfterDays` = 0 places only went when reopened empty.
-  - Rules: Mine = own record; Shared (MP only) = own + faction owner/members + every safehouse the player owns or belongs
-    to (records loaded by username); Explored (Opened by anyone) = own + `_world`. The Everything rule and the live scan
+  - Rules: Mine = own record; Shared = own + faction owner/members (records loaded by username); Explored (Opened by
+    anyone) = own + `_world`. Which rules exist follows the sharing model (see "Who shares with whom" below):
+    `LSW.IsRuleAllowed` (Mine always; single player: Explored; factions on: Shared; PVP and factions off: Explored; PVP
+    on and factions off: nothing else), and `LSW.ResolveRule` turns a forced or chosen rule that is not allowed into
+    the nearest one (Explored → Shared if allowed, else Mine). The server resolves every request the same way, so a
+    client cannot ask for more than the server allows. The Everything rule and the live scan
     of containers around the player (which also fed Explored) were removed at the user's request: a loot radar, the
     expensive part (61 x 61 tiles x 7 levels per search), and rows nobody had seen. Saved values above Explored (old
     sandbox 5, mod option index 4) clamp to Explored; the option index is normalised at `OnGameStart`. The own record is listed first and is never filtered by privacy (what you saw yourself); every other source
@@ -119,7 +125,9 @@ listed under "To verify".
   `M\towner\tkind\tid\tlevel\tplaceKind\tx\ty\tz\ttype\troom\tfullType\tt`), read synchronously on first use (a few
   hundred lines at most: 200 marks per player), saved every 30 s when dirty and on `OnSave`. One global file because
   filtering needs every owner's marks, online or not. Kinds: `p` = place key (`o:`, `v:`, `b:`), `i` = item ID.
-  Levels 1 only me, 2 my group (faction + safehouse, MP only; single player turns 2 into 1). Indexes `byPlace`,
+  Levels 1 only me, 2 my group (= faction mates; no longer offered: the server answers `group = false` and refuses
+  level 2, old level 2 marks stay and show as "Private: my faction"; with factions there is nothing for them to hide,
+  without factions there is no group, so they act as only me). Indexes `byPlace`,
   `byItem` (id → owner → level) and `bySquare` (object marks by square, for the gone check). Cleared per owner by a
   `Store.clearListeners` hook, i.e. on death and on the new-character check (a dead character cannot remember for
   you; a skill journal carrying them over is a possible later feature, deferred). Marks do not follow
@@ -140,7 +148,7 @@ listed under "To verify".
     owner per search.
   - Exposure is word of mouth (the user's model: knowledge travels by people talking). `remember` calls
     `Privacy.NoteSighting(player, entry)`: for every **only me** mark on the entry's key, its `parents` or its marked
-    IDs, if the finder is not the owner but is in the owner's faction / safehouse (any local player in single player),
+    IDs, if the finder is not the owner but is in the owner's faction (any local player in single player),
     the mark gets `exposedT` + `exposedBy`: a friendly found it and, not knowing it was a secret, will mention it, so
     the marker learns who. A finder from another faction never talks to the marker, so nothing is recorded; a my group
     mark is already shared with exactly the people who would tell, so it is never exposed. The marker sees
@@ -176,10 +184,11 @@ listed under "To verify".
     signature changes, so floors the player is standing by come back only when something there changes.
 - `client/TienLastSeenWhere_WindowPrivacy.lua`: the Privacy tab (methods added to `LSW.Window`; the window builds it in
   `createChildren` when `createPrivacyChildren` exists and shows the tab only while `LSW.IsPrivacyUseful()`: option
-  on and the sandbox not forcing What I have seen). Filter box, view combo (Nearby and on me, the default /
+  on and somebody can get your sightings at all: `LSW.IsPrivacyUseful`, false where only Mine resolves). Filter box, view combo (Nearby and on me, the default /
   Containers I remember / Marked private; the tab opens on Marked private while a new exposure is unread), admin tick
   box "Show private (admin)" (visible when the server says `canSeeAll`; sets the client's `seeAll`, sent with every
-  summary and find, and refreshes the search), list, buttons Only me / My group (hidden in single player) / Share /
+  summary and find, and refreshes the search), list, buttons Only me / My group (hidden: the server says `group =
+  false`) / Share /
   Show (double-click = Show). Nearby and on me = the inventory (recursive), then every container button of the loot
   page (`page.backpacks`, i.e. everything in reach, even while the page is collapsed) as a markable `container` row
   (object, vehicle part or floor bag; marked by locator) followed by its items; the container shown in the loot window
@@ -209,7 +218,7 @@ listed under "To verify".
   state: `Client.GetManage(playerNum)`, requests per slot (`Client.ManageSlot`: the op, or `places:<user>\n<type>`).
 - `client/TienLastSeenWhere_PrivacyMenu.lua`: Privacy in right-click menus (the user could not find the container to
   mark in the tab). World menu: "Privacy: <container>" per container of a clicked object (`OnFillWorldObjectContextMenu`,
-  objects only, more than 3 go under one "Privacy" submenu), submenu Only me / My group / Share with tooltips and a tick
+  objects only, more than 3 go under one "Privacy" submenu), submenu Only me / Share (My group not offered) with tooltips and a tick
   on the current level. Loot window container buttons: wraps `ISInventoryPage.onBackpackRightMouseDown` (vanilla puts a
   bag's item menu there, otherwise Rename, and closes the menu when it has nothing to add, so ours reopens it with
   `ISContextMenu.get`); bags go through the item menu. Items (`OnFillInventoryObjectContextMenu`): "Privacy" for one,
@@ -233,13 +242,13 @@ listed under "To verify".
   splits a character). Player 0's window is registered with `ISLayoutManager` ("TienLastSeenWhere"):
   `SaveLayout` / `RestoreLayout` keep position, size, column widths and sort in `layout.ini` (saved on `OnPostSave`),
   never the visibility. Found by comes from the server (`finderOf` in `findJob`): `byMe`, `by` = the username and `byName`
-  = the character name (both always sent together, so the viewer picks) only for the viewer's faction and safehouse members
-  (any local player in single player), or for everyone when the server's `Faction` option is off (`getServerOptions():getBoolean("Faction")`;
-  no factions means no group to be anonymous within), `bySomeone` for anyone else, nothing for old `_world` lines ("-"), plus `private`
-  when the viewer has a mark on the place, its parents or a marked ID of that type ("You (private)"). Anonymous on
-  purpose: names of strangers would show where other players have been. Default window 720 x 540 (min 520 x 300).
+  = the character name (`Store.CharacterName`, from the names index, so a search never loads finders' memory files;
+  nil = unknown, the client shows the username) for every finder, nothing for old `_world` lines ("-"), plus `private`
+  when the viewer has a mark on the place, its parents or a marked ID of that type ("You (private)"). Whatever reaches
+  a searcher came from someone who would tell them, so it is always named; the earlier anonymous "Someone" (strangers'
+  sightings pooled under Opened by anyone on PVP servers) went with the sharing model below. Default window 720 x 540 (min 520 x 300).
 - Find tab top row: the scope combo, then on the right the search rule combo (`ruleCombo`, writes the mod option with
-  `Options.SetSearchRule` + `PZAPI.ModOptions:save()`; disabled with "Set by the server" when the sandbox forces a rule;
+  `Options.SetSearchRule` + `PZAPI.ModOptions:save()`; only the rules `LSW.IsRuleAllowed` allows, rebuilt when that set changes (`fillRuleCombo`); disabled with "Set by the server" when the sandbox forces a rule or only What I have seen is allowed (`LSW.IsRuleForced`);
   no Shared entry in single player), with "Private shown" (admin tick box on), the spinner and "Server busy" to its
   left. Show, Go there, Take and double-click `releaseKeyboard()` (unfocus both text boxes) so movement keys move.
 - Privacy tab new finds: marks that come back `fresh` are put in `window.freshKeys` (key = `LSW.MarkKey`, which is also
@@ -335,18 +344,28 @@ before the lock stay in Find (Take disabled) until the gone check or `ForgetAfte
   place it shows the Floor within reach of the square), the target counts as found: our highlight stops for good and
   the object vanilla now highlights is left alone. Both writing `setHighlighted`/`setHighlightColor` on the same object
   in different colours made it flicker.
-- Another floor: `Route.Plan` (run as the job `LSWRoute<playerNum>`, so it is time-sliced) scans 40 tiles for staircases
-  on the player's level (going up: bottom squares) or the level below (going down: top squares), ranks them by straight
-  line (player → entry + exit → target), prices the best 6 by walking distance, and the arrow aims at the entry of the
-  cheapest. Walking distance is an A* over loaded squares on one floor (`walkDistance`): 8 directions, a step blocked by
-  `isSomethingTo` in either direction (walls, doors, objects), diagonals only when both sides are open, a box of the two
-  ends plus 30 tiles, 12000 nodes. Results: a number, `math.huge` when the box is fully searched and the goal is cut off
-  (a wall, not distance), or nil when the budget runs out or unloaded squares were met (then the straight line is used).
-  The choice is kept until the floor changes (no flipping between staircases each second); a plan that finds nothing is
-  retried every `ROUTE_MS`. No staircase: faded arrow straight at the target. A "1 up" / "1 down" badge is drawn at the tip.
-  Not done yet: aiming along the bearing while the target is beyond the 40-tile scan.
-  The planner was checked against a mocked grid (wall barrier forcing a detour: picks the far staircase; open map: the
-  near one), not in game.
+- Another floor: `Route.Plan` (run as the job `LSWRoute<playerNum>`, so it is time-sliced; `Arrow.Clear` cancels it, and a
+  finished plan only writes into the target that is still current) scans 40 tiles for staircases on the player's level
+  (going up: bottom squares) or the level below (going down: top squares), ranks them by straight line (player → entry +
+  exit → target), keeps the best 6 and prices them by walking distance; the arrow aims at the entry of the cheapest.
+  Walking distance (`Route.WalkDistances(z, sx, sy, goals)`): one Dijkstra flood per floor over loaded squares that stops
+  once every goal is settled, so the player's floor is flooded once from the player to all entries and the exit floor
+  once from the target to all exits (steps are symmetric). 8 directions, diagonals only when both orthogonal steps are
+  open, a box of the start and the goals plus 30 tiles, 20000 nodes. A step is blocked by a wall that is not a door, or
+  by a window (`isWallTo and not isDoorTo`, `isWindowTo`): `isSomethingTo` also counts doors, open or not (see the engine
+  notes), which made every doorway look sealed. Doors count as passable (players open them); furniture is not checked.
+  Results per goal: the distance; `math.huge` when the flood ended without reaching it and never stepped towards an
+  unknown square (walled off); otherwise a lower bound, `max(last settled distance, octile distance)`, which is never
+  below the straight line, so a staircase the search could not measure never looks cheaper than one it measured.
+  Unknown = an open step out of the box, or a step onto a square that is not loaded unless the current square's own
+  north / west wall (`collideN` / `collideW`) faces it; upper floors have no squares outside a building, and a south or
+  east outer wall stands on an outside square that exists, so a sealed room still reads as walled off. The chosen
+  staircase is kept until the floor changes or the player is 20 tiles (`Arrow.REPLAN_TILES`) from where the plan ran,
+  then it is planned again (the old one stays shown meanwhile); a plan that finds nothing is retried every `ROUTE_MS`.
+  No staircase: faded arrow straight at the target. A "1 up" / "1 down" badge is drawn at the tip. Not done: aiming along
+  the bearing while the target is beyond the 40-tile scan. Checked against a mocked grid (open map: near staircase; wall
+  with a far gap: far staircase; same wall with a door: near one; sealed upper-floor room with void outside: walled off;
+  node budget and a wall longer than the box: lower bounds), not in game.
 - Arrival (within 1.6 tiles, same level): the arrow hides; 8 s later the target and its highlight are cleared.
 
 ## To verify in game
@@ -363,8 +382,9 @@ before the lock stay in Find (Take disabled) until the gone check or `ForgetAfte
 - MemoryRefresh nearby: a stash you stand next to keeps its "Seen" age but does not expire.
 - Gone check: no container is forgotten while it is still there (sprite changes of a container object would read as
   gone; none known). Smash a counter, burn a crate, take a floor bag, drag a corpse away: each is forgotten on passing.
-- Privacy: two players in different factions; mark a counter, a bag in it and an item in it; the other player under
-  Opened by anyone must not find them until opening the counter themselves; My group with a faction mate;
+- Privacy: two faction mates on a factions server; mark a counter, a bag in it and an item in it; the other player
+  under Shared must not find them until opening the counter themselves; an old My group mark showing as "Private: my
+  faction";
   the admin tick box; marks gone after death; a marked counter smashed loses its mark. Tab layout at the default size
   (the window is now 720 x 540), ISTickBox placement on the right, the Find column header lining up with the rows
   (scroll bar shown and hidden), `ISButton:setTitle` for "Privacy (!)", exposure appearing for the marker after
@@ -388,7 +408,7 @@ before the lock stay in Find (Take disabled) until the gone check or `ForgetAfte
 - The search rule is a per-player mod option; the sandbox can force one rule on everyone.
 - No "highlight unopened containers"; memories never expire unless `ForgetAfterDays` is set.
 - Items other players drop count once seen.
-- Privacy marks are per character (reset on death), sharing levels only me / my group, admins may tick a box to see
+- Privacy marks are per character (reset on death), sharing level only me (my group is no longer offered), admins may tick a box to see
   everything, the whole feature has a sandbox option (on by default).
 - Admins manage memories in a Manage tab (user's request, 2026-10-20): forget item types, single places or everything,
   only the player's own memory unless "Also from shared knowledge" is ticked. Searches never copy anything into the
@@ -398,9 +418,18 @@ before the lock stay in Find (Take disabled) until the gone check or `ForgetAfte
 - MemoryRefresh (sandbox, default when opened) and FoundByName (sandbox, default username) are server choices.
 - Marked exact items do not show where they are (the marker knows; the Find tab finds it). Corpse keys by index stay:
   only a tile with several bodies can point at the wrong one.
-- Group sharing is instant and has no range: faction / safehouse members count as always in contact (no walkie,
+- Group sharing is instant and has no range: faction members count as always in contact (no walkie,
   no meeting up, works while offline). Proximity or radio sharing was considered and declined: the mod is meant to
   make finding things easier, not to add rules to learn. Keep new features in that spirit.
 - A mark means "the marker does not tell"; others who find it share it as usual. The marker hears about it only from
-  their own faction / safehouse, by name (they would mention it); never from other factions. Found by names only the
-  searcher's own group.
+  their own faction, by name (they would mention it); never from other factions.
+- Who shares with whom (user's call, 2026-10-20; the full table is `SHARING_SCENARIOS.md`): finding is word of mouth,
+  you only learn from someone who would tell you, and you know who told you, so every finder is named. Safehouses
+  play no part ("all fair game"). Factions on: only faction members share, with their own faction; a player in no
+  faction shares with nobody (Shared = own sightings only), as in single player. Factions off: no groups; PVP off =
+  everyone shares (Opened by anyone), PVP on = nobody shares (only What I have seen, the rule combo disabled with
+  "Set by the server", privacy hidden). `LSW.FactionsOn` / `LSW.PvpOn` read the vanilla server options `Faction` /
+  `PVP` (`getServerOptions():getBoolean`, also valid on clients; false in single player), live at each search.
+  `Privacy.SharedUsernames` is the one group check (faction mates while factions are on, else only the player) behind
+  the Shared rule, marks and exposure notices. The safety system and non-PVP zones are not considered. Every
+  sighting still goes into `_world`, so turning PVP and factions off later gives Opened by anyone its full history.

@@ -56,16 +56,64 @@ function LSW.GetSandboxRule()
     return math.min(rule, LSW.RULE_EXPLORED)
 end
 
+function LSW.IsMultiplayer()
+    return isClient() or isServer()
+end
+
+local function serverBoolean(name)
+    local options = getServerOptions and getServerOptions()
+    return options ~= nil and options:getBoolean(name) == true
+end
+
+function LSW.FactionsOn()
+    return LSW.IsMultiplayer() and serverBoolean("Faction")
+end
+
+function LSW.PvpOn()
+    return LSW.IsMultiplayer() and serverBoolean("PVP")
+end
+
+function LSW.IsRuleAllowed(rule)
+    if rule == LSW.RULE_MINE then
+        return true
+    end
+    if not LSW.IsMultiplayer() then
+        return rule == LSW.RULE_EXPLORED
+    end
+    if LSW.FactionsOn() then
+        return rule == LSW.RULE_SHARED
+    end
+    if LSW.PvpOn() then
+        return false
+    end
+    return rule == LSW.RULE_EXPLORED
+end
+
+local function nearestAllowed(rule)
+    if LSW.IsRuleAllowed(rule) then
+        return rule
+    end
+    if rule == LSW.RULE_EXPLORED and LSW.IsRuleAllowed(LSW.RULE_SHARED) then
+        return LSW.RULE_SHARED
+    end
+    return LSW.RULE_MINE
+end
+
 function LSW.ResolveRule(playerRule)
     local forced = LSW.GetSandboxRule()
     if forced ~= LSW.RULE_PLAYER then
-        return forced
+        return nearestAllowed(forced)
     end
     local rule = tonumber(playerRule)
     if not rule or rule < LSW.RULE_MINE then
         return LSW.RULE_MINE
     end
-    return math.min(rule, LSW.RULE_EXPLORED)
+    return nearestAllowed(math.min(rule, LSW.RULE_EXPLORED))
+end
+
+function LSW.IsRuleForced()
+    return LSW.GetSandboxRule() ~= LSW.RULE_PLAYER or not (LSW.IsRuleAllowed(LSW.RULE_SHARED)
+        or LSW.IsRuleAllowed(LSW.RULE_EXPLORED))
 end
 
 function LSW.GetFloorRule()
@@ -110,7 +158,13 @@ function LSW.IsPrivacyEnabled()
 end
 
 function LSW.IsPrivacyUseful()
-    return LSW.IsPrivacyEnabled() and LSW.GetSandboxRule() ~= LSW.RULE_MINE
+    if not LSW.IsPrivacyEnabled() then
+        return false
+    end
+    if LSW.GetSandboxRule() ~= LSW.RULE_PLAYER then
+        return LSW.ResolveRule(nil) ~= LSW.RULE_MINE
+    end
+    return LSW.IsRuleAllowed(LSW.RULE_SHARED) or LSW.IsRuleAllowed(LSW.RULE_EXPLORED)
 end
 
 function LSW.MarkKey(kind, id)

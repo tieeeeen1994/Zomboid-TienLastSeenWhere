@@ -274,8 +274,6 @@ local function finderText(place)
         text = getText("IGUI_TienLastSeenWhere_ByMe")
     elseif place.by then
         text = (LSW.Options.GetNameFormat() == LSW.NAME_CHARACTER and place.byName) or place.by
-    elseif place.bySomeone then
-        text = getText("IGUI_TienLastSeenWhere_BySomeone")
     end
     if place.private then
         text = getText("IGUI_TienLastSeenWhere_PrivateSuffix", text)
@@ -371,11 +369,7 @@ function Window:createChildren()
     self.ruleCombo.anchorRight = true
     self.ruleCombo:initialise()
     self:addChild(self.ruleCombo)
-    self.ruleCombo:addOptionWithData(getText("UI_TienLastSeenWhere_SearchRule_Mine"), LSW.RULE_MINE)
-    if isClient() then
-        self.ruleCombo:addOptionWithData(getText("UI_TienLastSeenWhere_SearchRule_Shared"), LSW.RULE_SHARED)
-    end
-    self.ruleCombo:addOptionWithData(getText("UI_TienLastSeenWhere_SearchRule_Explored"), LSW.RULE_EXPLORED)
+    self:fillRuleCombo()
 
     local buttonHeight = FONT_HGT_SMALL + 8
     local bottom = self.height - self:resizeWidgetHeight() - PAD
@@ -691,7 +685,9 @@ end
 
 function Window:onNameFormatChange()
     LSW.Options.SetNameFormatIndex(self.nameCombo:getOptionData(self.nameCombo.selected))
-    self:refreshResults()
+    if self.sortBy == "by" then
+        self:rebuildRows()
+    end
 end
 
 function Window:onRuleChange()
@@ -702,12 +698,37 @@ function Window:onRuleChange()
     end
 end
 
-function Window:syncRuleCombo()
-    local forced = LSW.GetSandboxRule() ~= LSW.RULE_PLAYER
-    local rule = LSW.Options.GetEffectiveRule()
-    if rule == LSW.RULE_SHARED and not isClient() then
-        rule = LSW.RULE_MINE
+local RULE_OPTIONS = {
+    { LSW.RULE_MINE, "UI_TienLastSeenWhere_SearchRule_Mine" },
+    { LSW.RULE_SHARED, "UI_TienLastSeenWhere_SearchRule_Shared" },
+    { LSW.RULE_EXPLORED, "UI_TienLastSeenWhere_SearchRule_Explored" },
+}
+
+function Window:fillRuleCombo()
+    local signature = ""
+    for _, spec in ipairs(RULE_OPTIONS) do
+        if LSW.IsRuleAllowed(spec[1]) then
+            signature = signature .. tostring(spec[1])
+        end
     end
+    if self.ruleSignature == signature then
+        return
+    end
+    self.ruleSignature = signature
+    self.ruleCombo:clear()
+    for _, spec in ipairs(RULE_OPTIONS) do
+        if LSW.IsRuleAllowed(spec[1]) then
+            self.ruleCombo:addOptionWithData(getText(spec[2]), spec[1])
+        end
+    end
+end
+
+function Window:syncRuleCombo()
+    if not self.ruleCombo.expanded then
+        self:fillRuleCombo()
+    end
+    local forced = LSW.IsRuleForced()
+    local rule = LSW.Options.GetEffectiveRule()
     self.ruleCombo.disabled = forced
     if self.ruleCombo:getOptionData(self.ruleCombo.selected) ~= rule and not self.ruleCombo.expanded then
         self.ruleCombo:selectData(rule)
@@ -1171,7 +1192,7 @@ function Window:render()
         self:drawTextRight(text, x, textY, r, g, b, 1, UIFont.Small)
         x = x - getTextManager():MeasureStringX(UIFont.Small, text) - PAD
     end
-    if LSW.GetSandboxRule() ~= LSW.RULE_PLAYER then
+    if LSW.IsRuleForced() then
         note("IGUI_TienLastSeenWhere_RuleServer", 0.7, 0.7, 0.7)
     end
     if LSW.Client.GetSeeAll(self.playerNum) then

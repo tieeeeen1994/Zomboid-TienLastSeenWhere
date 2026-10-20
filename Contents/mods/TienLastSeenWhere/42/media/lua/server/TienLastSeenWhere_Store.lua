@@ -12,6 +12,7 @@ local Store = LSW.Store
 
 Store.FOLDER = "TienLastSeenWhere"
 Store.WORLD_KEY = "_world"
+Store.NAMES_KEY = "_names"
 Store.VERSION = "2"
 Store.SAVE_INTERVAL_MS = 30000
 Store.IDLE_UNLOAD_MS = 300000
@@ -21,6 +22,8 @@ Store.clearListeners = {}
 local records = {}
 local lastSaveMs = 0
 local openWriter = nil
+local names = nil
+local namesDirty = false
 
 local function sanitize(text)
     return (string.gsub(tostring(text), "[^%w%-_]", "_"))
@@ -32,6 +35,51 @@ end
 
 local function fileName(key)
     return worldFolder() .. "/" .. sanitize(key) .. ".txt"
+end
+
+local function loadNames()
+    names = {}
+    local reader = getFileReader(fileName(Store.NAMES_KEY), false)
+    if not reader then
+        return
+    end
+    local line = reader:readLine()
+    while line do
+        local username, name = string.match(line, "^([^\t]+)\t(.+)$")
+        if username then
+            names[username] = name
+        end
+        line = reader:readLine()
+    end
+    reader:close()
+end
+
+local function rememberName(username, name)
+    if not username or not name or name == "" or username == Store.WORLD_KEY then
+        return
+    end
+    if not names then
+        loadNames()
+    end
+    if names[username] ~= name then
+        names[username] = name
+        namesDirty = true
+    end
+end
+
+local function saveNames()
+    if not namesDirty or not names then
+        return
+    end
+    local writer = getFileWriter(fileName(Store.NAMES_KEY), true, false)
+    if not writer then
+        return
+    end
+    namesDirty = false
+    for username, name in pairs(names) do
+        writer:writeln(username .. "\t" .. name)
+    end
+    writer:close()
 end
 
 local function field(value)
@@ -314,6 +362,7 @@ local function load(key)
     if parts[1] == "V" then
         record.hours = tonumber(parts[3]) or 0
         record.name = unfield(parts[4])
+        rememberName(key, record.name)
     else
         addLoaded(record, header)
     end
@@ -418,6 +467,7 @@ function Store.ForPlayer(player)
             record.name = name
             record.dirty = true
         end
+        rememberName(record.key, name)
     end
     return record
 end
@@ -455,6 +505,7 @@ function Store.Describe(key)
     local remembers = header ~= nil
     if header and string.sub(header, 1, 2) == "V\t" then
         name = unfield(LSW.Split(header, "\t")[4])
+        rememberName(key, name)
         remembers = reader:readLine() ~= nil
     end
     reader:close()
@@ -530,11 +581,26 @@ function Store.Touch(record, key)
     end
 end
 
+function Store.CharacterName(username)
+    if not username then
+        return nil
+    end
+    if not names then
+        loadNames()
+    end
+    local name = names[username]
+    if name then
+        return name
+    end
+    local record = records[username]
+    return record and record.name or nil
+end
+
 function Store.NameOf(username)
     if LSW.GetFoundByName() ~= LSW.NAME_CHARACTER or not username then
         return username
     end
-    return Store.Get(username).name or username
+    return Store.CharacterName(username) or Store.Get(username).name or username
 end
 
 function Store.Order(record)
@@ -572,6 +638,7 @@ local function saveAll(force)
             end
         end
     end
+    saveNames()
 end
 
 function Store.SaveAll(force)
@@ -612,6 +679,8 @@ local function onGameStart()
         stopLoading(record)
     end
     records = {}
+    names = nil
+    namesDirty = false
 end
 
 Events.OnCharacterDeath.Add(onCharacterDeath)

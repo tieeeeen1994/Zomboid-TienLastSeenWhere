@@ -33,7 +33,7 @@ function Menu.GroupAllowed(playerNum)
     if privacy then
         return privacy.group
     end
-    return isClient()
+    return false
 end
 
 function Menu.EnsurePrivacy(player)

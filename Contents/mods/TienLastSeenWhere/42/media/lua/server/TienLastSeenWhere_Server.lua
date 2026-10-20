@@ -781,8 +781,6 @@ end
 
 local function finderOf(player)
     local name = Store.KeyOf(player)
-    local factions = isServer() and getServerOptions():getBoolean("Faction")
-    local group = isServer() and factions and Privacy.SharedUsernames(player:getUsername()) or nil
     return function(result, entry, fullType)
         if LSW.IsPrivacyEnabled() and Privacy.OwnLevel(name, entry, fullType) then
             result.private = true
@@ -793,11 +791,9 @@ local function finderOf(player)
         end
         if by == name then
             result.byMe = true
-        elseif not isServer() or not factions or group[by] then
-            result.by = by
-            result.byName = Store.Get(by).name or by
         else
-            result.bySomeone = true
+            result.by = by
+            result.byName = Store.CharacterName(by)
         end
     end
 end
@@ -965,7 +961,7 @@ local function sendPrivacy(player, args, reason)
         request = args.request,
         playerNum = args.playerNum,
         enabled = LSW.IsPrivacyEnabled(),
-        group = isServer(),
+        group = false,
         canSeeAll = Privacy.CanSeeAll(player),
         marks = marks,
         reason = reason,
@@ -1153,12 +1149,9 @@ local function onPrivacySet(player, args)
         return
     end
     local level = tonumber(args.level)
-    if level ~= LSW.PRIVATE_NONE and level ~= LSW.PRIVATE_ME and level ~= LSW.PRIVATE_GROUP then
+    if level ~= LSW.PRIVATE_NONE and level ~= LSW.PRIVATE_ME then
         sendPrivacy(player, args, "invalid")
         return
-    end
-    if level == LSW.PRIVATE_GROUP and not isServer() then
-        level = LSW.PRIVATE_ME
     end
     local reason
     if args.kind == LSW.MARK_PLACE and type(args.locator) == "table" then

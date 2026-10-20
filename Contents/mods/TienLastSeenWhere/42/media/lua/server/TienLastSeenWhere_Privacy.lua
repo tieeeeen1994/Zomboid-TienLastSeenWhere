@@ -381,23 +381,15 @@ end
 
 function Privacy.SharedUsernames(username)
     local names = { [username] = true }
+    if not LSW.FactionsOn() then
+        return names
+    end
     local faction = Faction.getPlayerFaction(username)
     if faction then
         names[faction:getOwner()] = true
         local players = faction:getPlayers()
         for i = 0, players:size() - 1 do
             names[players:get(i)] = true
-        end
-    end
-    local safehouses = SafeHouse.getSafehouseList()
-    for i = 0, safehouses:size() - 1 do
-        local safehouse = safehouses:get(i)
-        local players = safehouse:getPlayers()
-        if safehouse:getOwner() == username or players:contains(username) then
-            names[safehouse:getOwner()] = true
-            for j = 0, players:size() - 1 do
-                names[players:get(j)] = true
-            end
         end
     end
     return names
