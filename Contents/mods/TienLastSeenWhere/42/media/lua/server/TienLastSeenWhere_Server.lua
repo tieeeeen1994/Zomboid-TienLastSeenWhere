@@ -781,7 +781,8 @@ end
 
 local function finderOf(player)
     local name = Store.KeyOf(player)
-    local group = isServer() and Privacy.SharedUsernames(player:getUsername()) or nil
+    local factions = isServer() and getServerOptions():getBoolean("Faction")
+    local group = isServer() and factions and Privacy.SharedUsernames(player:getUsername()) or nil
     return function(result, entry, fullType)
         if LSW.IsPrivacyEnabled() and Privacy.OwnLevel(name, entry, fullType) then
             result.private = true
@@ -792,8 +793,9 @@ local function finderOf(player)
         end
         if by == name then
             result.byMe = true
-        elseif not group or group[by] then
-            result.by = Store.NameOf(by)
+        elseif not isServer() or not factions or group[by] then
+            result.by = by
+            result.byName = Store.Get(by).name or by
         else
             result.bySomeone = true
         end

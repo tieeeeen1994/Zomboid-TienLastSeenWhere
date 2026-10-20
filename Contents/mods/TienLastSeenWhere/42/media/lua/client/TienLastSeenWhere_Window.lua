@@ -273,7 +273,7 @@ local function finderText(place)
     if place.byMe then
         text = getText("IGUI_TienLastSeenWhere_ByMe")
     elseif place.by then
-        text = place.by
+        text = (LSW.Options.GetNameFormat() == LSW.NAME_CHARACTER and place.byName) or place.by
     elseif place.bySomeone then
         text = getText("IGUI_TienLastSeenWhere_BySomeone")
     end
@@ -435,6 +435,25 @@ function Window:createChildren()
         x = x + width + PAD / 2
     end
 
+    local nameWidth = 0
+    for _, key in ipairs({ "UI_TienLastSeenWhere_NameFormat_Server", "UI_TienLastSeenWhere_NameFormat_Username",
+        "UI_TienLastSeenWhere_NameFormat_Character" }) do
+        nameWidth = math.max(nameWidth, getTextManager():MeasureStringX(UIFont.Small, getText(key)))
+    end
+    nameWidth = nameWidth + 40
+    self.nameCombo = ISComboBox:new(self.width - PAD - nameWidth, buttonTop, nameWidth, buttonHeight, self,
+        Window.onNameFormatChange)
+    self.nameCombo.anchorLeft = false
+    self.nameCombo.anchorRight = true
+    self.nameCombo.anchorTop = false
+    self.nameCombo.anchorBottom = true
+    self.nameCombo:initialise()
+    self:addChild(self.nameCombo)
+    self.nameCombo:addOptionWithData(getText("UI_TienLastSeenWhere_NameFormat_Server"), 1)
+    self.nameCombo:addOptionWithData(getText("UI_TienLastSeenWhere_NameFormat_Username"), 2)
+    self.nameCombo:addOptionWithData(getText("UI_TienLastSeenWhere_NameFormat_Character"), 3)
+    self.nameCombo.selected = LSW.Options.GetNameFormatIndex()
+
     self.findWidgets = { self.entry, self.scopeCombo, self.ruleCombo, self.list }
     for _, header in pairs(self.headers) do
         self.findWidgets[#self.findWidgets + 1] = header
@@ -442,6 +461,7 @@ function Window:createChildren()
     for _, button in pairs(self.buttons) do
         self.findWidgets[#self.findWidgets + 1] = button
     end
+    self.findWidgets[#self.findWidgets + 1] = self.nameCombo
     self.privacyWidgets = {}
     if self.createPrivacyChildren then
         self:createPrivacyChildren(top, entryHeight, buttonTop, buttonHeight)
@@ -666,6 +686,11 @@ function Window:onScopeChange()
     else
         self:rebuildRows()
     end
+end
+
+function Window:onNameFormatChange()
+    LSW.Options.SetNameFormatIndex(self.nameCombo:getOptionData(self.nameCombo.selected))
+    self:refreshResults()
 end
 
 function Window:onRuleChange()

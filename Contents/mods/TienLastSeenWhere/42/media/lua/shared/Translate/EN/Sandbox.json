@@ -22,7 +22,7 @@
     "Sandbox_TienLastSeenWhere_MemoryRefresh_option1": "When opened",
     "Sandbox_TienLastSeenWhere_MemoryRefresh_option2": "When opened or nearby",
     "Sandbox_TienLastSeenWhere_FoundByName": "Found by shows",
-    "Sandbox_TienLastSeenWhere_FoundByName_tooltip": "How the search window names who found something (only for the searcher's own faction and safehouse members; others show as Someone), and who found a private mark.",
+    "Sandbox_TienLastSeenWhere_FoundByName_tooltip": "How the search window names who found something (only for the searcher's own faction and safehouse members; others show as Someone, unless the server's Faction option is off, then everyone is named), and who found a private mark.",
     "Sandbox_TienLastSeenWhere_FoundByName_option1": "Username",
     "Sandbox_TienLastSeenWhere_FoundByName_option2": "Character name"
 }

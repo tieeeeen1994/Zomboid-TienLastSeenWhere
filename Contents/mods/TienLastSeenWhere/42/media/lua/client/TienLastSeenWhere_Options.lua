@@ -10,6 +10,7 @@ local OPTIONS_ID = "TienLastSeenWhere"
 Options.SEARCH_RULE = "searchRule"
 Options.ARROW_COLOUR = "arrowColour"
 Options.ARROW_SIZE = "arrowSize"
+Options.NAME_FORMAT = "nameFormat"
 
 local function getOption(id)
     if not PZAPI or not PZAPI.ModOptions then
@@ -44,6 +45,38 @@ function Options.GetEffectiveRule()
     return LSW.ResolveRule(Options.GetSearchRule())
 end
 
+local NAME_FORMAT_SERVER = 1
+local NAME_FORMAT_USERNAME = 2
+local NAME_FORMAT_CHARACTER = 3
+
+function Options.GetNameFormatIndex()
+    local option = getOption(Options.NAME_FORMAT)
+    local index = option and option:getValue()
+    if type(index) ~= "number" then
+        return NAME_FORMAT_SERVER
+    end
+    return math.max(NAME_FORMAT_SERVER, math.min(NAME_FORMAT_CHARACTER, index))
+end
+
+function Options.SetNameFormatIndex(index)
+    local option = getOption(Options.NAME_FORMAT)
+    if option and option:getValue() ~= index then
+        option:setValue(index)
+        PZAPI.ModOptions:save()
+    end
+end
+
+-- The name the finder is shown by: the player's choice, else the server's Found by setting.
+function Options.GetNameFormat()
+    local index = Options.GetNameFormatIndex()
+    if index == NAME_FORMAT_USERNAME then
+        return LSW.NAME_USERNAME
+    elseif index == NAME_FORMAT_CHARACTER then
+        return LSW.NAME_CHARACTER
+    end
+    return LSW.GetFoundByName()
+end
+
 function Options.GetArrowColour()
     local option = getOption(Options.ARROW_COLOUR)
     local colour = option and option:getValue()
@@ -70,6 +103,12 @@ if PZAPI and PZAPI.ModOptions then
     rule:addItem("UI_TienLastSeenWhere_SearchRule_Mine", true)
     rule:addItem("UI_TienLastSeenWhere_SearchRule_Shared", false)
     rule:addItem("UI_TienLastSeenWhere_SearchRule_Explored", false)
+
+    local names = options:addComboBox(Options.NAME_FORMAT, "UI_TienLastSeenWhere_NameFormat",
+        "UI_TienLastSeenWhere_NameFormat_tooltip")
+    names:addItem("UI_TienLastSeenWhere_NameFormat_Server", true)
+    names:addItem("UI_TienLastSeenWhere_NameFormat_Username", false)
+    names:addItem("UI_TienLastSeenWhere_NameFormat_Character", false)
 
     options:addColorPicker(Options.ARROW_COLOUR, "UI_TienLastSeenWhere_ArrowColour", 1, 0.84, 0.31, 0.85,
         "UI_TienLastSeenWhere_ArrowColour_tooltip")

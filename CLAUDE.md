@@ -232,9 +232,10 @@ listed under "To verify".
   the same edges: Where, Seen and Found by are centred in their column, Count right-aligned. Text is cut with "..." to its column (`Window.Fit`; Kahlua strings are Java strings, so `sub` never
   splits a character). Player 0's window is registered with `ISLayoutManager` ("TienLastSeenWhere"):
   `SaveLayout` / `RestoreLayout` keep position, size, column widths and sort in `layout.ini` (saved on `OnPostSave`),
-  never the visibility. Found by comes from the server (`finderOf` in `findJob`): `byMe`, `by` = the name
-  (`Store.NameOf`: username, or character name with FoundByName = 2) only for the viewer's faction and safehouse members
-  (any local player in single player), `bySomeone` for anyone else, nothing for old `_world` lines ("-"), plus `private`
+  never the visibility. Found by comes from the server (`finderOf` in `findJob`): `byMe`, `by` = the username and `byName`
+  = the character name (both always sent together, so the viewer picks) only for the viewer's faction and safehouse members
+  (any local player in single player), or for everyone when the server's `Faction` option is off (`getServerOptions():getBoolean("Faction")`;
+  no factions means no group to be anonymous within), `bySomeone` for anyone else, nothing for old `_world` lines ("-"), plus `private`
   when the viewer has a mark on the place, its parents or a marked ID of that type ("You (private)"). Anonymous on
   purpose: names of strangers would show where other players have been. Default window 720 x 540 (min 520 x 300).
 - Find tab top row: the scope combo, then on the right the search rule combo (`ruleCombo`, writes the mod option with

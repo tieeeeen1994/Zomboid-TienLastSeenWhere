@@ -9,7 +9,7 @@ then follow an arrow on the floor back to it.
   dark only within reach), or when search mode spots them.
 - **Search as you type.** Results are grouped by item, then by place, in columns you can resize and sort by: a small
   arrow pointing the way on screen, the place (counter, fridge, car trunk, corpse, floor, with the room), how far and
-  which floor, how long ago it was seen, who found it (you, a faction or safehouse member by name, or "Someone") and
+  which floor, how long ago it was seen, who found it (you, a faction or safehouse member by name, or "Someone"; everyone by name when the server's Faction option is off), shown as username or character name (a choice at the bottom of the window, or in the mod options) and
   how many. The window remembers its size, position and columns.
 - **Where to look.** Everywhere, This building, Nearby, or On me (your own bags).
 - **Show** puts an arrow on the floor at your feet, aimed at the place, and highlights the container (or the items on the floor) in the arrow colour. On another floor it points
