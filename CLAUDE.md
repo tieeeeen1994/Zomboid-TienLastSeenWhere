@@ -335,10 +335,18 @@ before the lock stay in Find (Take disabled) until the gone check or `ForgetAfte
   place it shows the Floor within reach of the square), the target counts as found: our highlight stops for good and
   the object vanilla now highlights is left alone. Both writing `setHighlighted`/`setHighlightColor` on the same object
   in different colours made it flicker.
-- Another floor: `Route.Waypoint` scans 40 tiles for staircases on the player's level (going up: bottom squares) or the level
-  below (going down: top squares), picks the lowest (player → entry) + (exit → target), and the arrow aims at the entry,
-  re-evaluated every second and when the level changes. No staircase: faded arrow straight at the target. A "1 up" /
-  "1 down" badge is drawn at the tip.
+- Another floor: `Route.Plan` (run as the job `LSWRoute<playerNum>`, so it is time-sliced) scans 40 tiles for staircases
+  on the player's level (going up: bottom squares) or the level below (going down: top squares), ranks them by straight
+  line (player → entry + exit → target), prices the best 6 by walking distance, and the arrow aims at the entry of the
+  cheapest. Walking distance is an A* over loaded squares on one floor (`walkDistance`): 8 directions, a step blocked by
+  `isSomethingTo` in either direction (walls, doors, objects), diagonals only when both sides are open, a box of the two
+  ends plus 30 tiles, 12000 nodes. Results: a number, `math.huge` when the box is fully searched and the goal is cut off
+  (a wall, not distance), or nil when the budget runs out or unloaded squares were met (then the straight line is used).
+  The choice is kept until the floor changes (no flipping between staircases each second); a plan that finds nothing is
+  retried every `ROUTE_MS`. No staircase: faded arrow straight at the target. A "1 up" / "1 down" badge is drawn at the tip.
+  Not done yet: aiming along the bearing while the target is beyond the 40-tile scan.
+  The planner was checked against a mocked grid (wall barrier forcing a detour: picks the far staircase; open map: the
+  near one), not in game.
 - Arrival (within 1.6 tiles, same level): the arrow hides; 8 s later the target and its highlight are cleared.
 
 ## To verify in game

@@ -188,14 +188,25 @@ local function aimOf(player, target)
         target.noRoute = false
         return target.x, target.y
     end
-    local now = getTimestampMs()
-    if now - target.routeMs >= Arrow.ROUTE_MS or target.routeZ ~= pz then
-        target.routeMs = now
+    if target.routeZ ~= pz then
         target.routeZ = pz
-        target.waypoint = LSW.Route.Waypoint(player, target)
-        target.noRoute = target.waypoint == nil
+        target.waypoint = nil
     end
-    if target.waypoint then
+    -- The chosen staircase is kept until the floor changes (no re-picking each second, so the arrow does not flip
+    -- between staircases); a plan that found nothing is retried every ROUTE_MS.
+    local now = getTimestampMs()
+    local job = "LSWRoute" .. player:getPlayerNum()
+    if not target.waypoint and not LSW.Jobs.IsRunning(job) and now - target.routeMs >= Arrow.ROUTE_MS then
+        target.routeMs = now
+        LSW.Jobs.Start(job, function()
+            local waypoint = LSW.Route.Plan(player, target)
+            if target.routeZ == pz then
+                target.waypoint = waypoint
+                target.noRoute = waypoint == nil
+            end
+        end)
+    end
+    if target.waypoint and target.waypoint.z == pz then
         return target.waypoint.x, target.waypoint.y
     end
     return target.x, target.y

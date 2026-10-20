@@ -380,9 +380,10 @@ function Window:createChildren()
     local buttonHeight = FONT_HGT_SMALL + 8
     local bottom = self.height - self:resizeWidgetHeight() - PAD
     local buttonTop = bottom - buttonHeight
+    local nameTop = buttonTop - PAD - entryHeight
     self.headerY = self.scopeCombo:getBottom() + PAD
     local listTop = self.headerY + HEADER_HEIGHT
-    self.list = ISScrollingListBox:new(PAD, listTop, self.width - PAD * 2, buttonTop - PAD - listTop)
+    self.list = ISScrollingListBox:new(PAD, listTop, self.width - PAD * 2, nameTop - PAD - listTop)
     self.list.anchorRight = true
     self.list.anchorBottom = true
     self.list:initialise()
@@ -441,7 +442,7 @@ function Window:createChildren()
         nameWidth = math.max(nameWidth, getTextManager():MeasureStringX(UIFont.Small, getText(key)))
     end
     nameWidth = nameWidth + 40
-    self.nameCombo = ISComboBox:new(self.width - PAD - nameWidth, buttonTop, nameWidth, buttonHeight, self,
+    self.nameCombo = ISComboBox:new(self.width - PAD - nameWidth, nameTop, nameWidth, entryHeight, self,
         Window.onNameFormatChange)
     self.nameCombo.anchorLeft = false
     self.nameCombo.anchorRight = true
