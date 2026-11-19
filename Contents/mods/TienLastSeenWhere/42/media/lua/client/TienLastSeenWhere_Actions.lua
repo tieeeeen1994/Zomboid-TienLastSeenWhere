@@ -11,6 +11,7 @@ local Actions = LSW.Actions
 
 Actions.OPEN_TIMEOUT_MS = 60000
 Actions.OPEN_DISTANCE = 1.8
+Actions.TELEPORT_TIMEOUT_MS = 15000
 
 local pending = {}
 
@@ -214,11 +215,69 @@ function Actions.GoThere(player, place, fullType)
     return true
 end
 
+function Actions.CanTeleport(player)
+    if not player then
+        return false
+    end
+    if not isClient() then
+        return isDebugEnabled()
+    end
+    local role = player:getRole()
+    return role ~= nil and role:hasCapability(Capability.TeleportToCoordinates)
+end
+
+local function teleportTarget(place)
+    if place.kind == LSW.KIND_VEHICLE and place.vehicle then
+        local vehicle = getVehicleById(place.vehicle)
+        if vehicle then
+            return math.floor(vehicle:getX()), math.floor(vehicle:getY()), math.floor(vehicle:getZ())
+        end
+    end
+    return place.x, place.y, place.z
+end
+
+function Actions.Teleport(player, place, fullType)
+    if not Actions.CanTeleport(player) then
+        return false
+    end
+    Actions.Show(player, place, fullType)
+    local x, y, z = teleportTarget(place)
+    ISTimedActionQueue.clear(player)
+    if isClient() then
+        local who = ""
+        if player:getPlayerNum() ~= 0 then
+            who = "\"" .. player:getUsername() .. "\" "
+        end
+        SendCommandToServer(string.format("/teleportto %s%d,%d,%d", who, x, y, z))
+    else
+        player:teleportTo(x + 0.5, y + 0.5, z)
+    end
+    pending[player:getPlayerNum()] = { place = place, teleport = { x = x, y = y, z = z },
+        deadline = getTimestampMs() + Actions.TELEPORT_TIMEOUT_MS }
+    return true
+end
+
+local function arrived(player, place, target)
+    if math.floor(player:getZ()) ~= target.z
+        or LSW.DistanceTo(player:getX(), player:getY(), target.x + 0.5, target.y + 0.5) > Actions.OPEN_DISTANCE then
+        return false
+    end
+    if place.kind == LSW.KIND_FLOOR then
+        return squareOf(place) ~= nil
+    end
+    return Actions.FindContainer(place) ~= nil
+end
+
 local function onTick()
     for playerNum, entry in pairs(pending) do
         local player = getSpecificPlayer(playerNum)
         if not player or player:isDead() or getTimestampMs() > entry.deadline then
             pending[playerNum] = nil
+        elseif entry.teleport then
+            if arrived(player, entry.place, entry.teleport) then
+                pending[playerNum] = nil
+                openLoot(player, entry.place)
+            end
         elseif not ISTimedActionQueue.isPlayerDoingAction(player) and not player:isPlayerMoving() then
             pending[playerNum] = nil
             local place = entry.place

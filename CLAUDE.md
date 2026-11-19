@@ -288,7 +288,15 @@ listed under "To verify".
   scroll stops, so that row showed over the scope box.
 - `client/TienLastSeenWhere_Actions.lua`: finding the client's copy of a place, Take (`ISInventoryTransferUtil` from a
   container, `ISGrabItemAction` from the floor), Go there (walk to the square or a free adjacent one, then open the loot
-  window on it when the walk ends within 1.8 tiles, 60 s timeout).
+  window on it when the walk ends within 1.8 tiles, 60 s timeout). Teleport (admins: `Capability.TeleportToCoordinates`
+  in MP, `isDebugEnabled()` in single player, vanilla's own split): sets the arrow, clears the queue, sends
+  `/teleportto x,y,z` (with the username for split-screen players 1-3; the server checks the capability again) or
+  `teleportTo` in single player, onto the place's own tile (the user's call: landing inside the counter is fine) or a
+  loaded vehicle's current tile, then opens the loot window once the player is within 1.8 tiles of it and the
+  container has loaded (15 s timeout; the position only changes after the server's teleport comes back).
+  The Teleport buttons (Find tab, and Manage tab place rows) are kept out of `findWidgets` / `manageWidgets` and
+  shown every frame by `Window:syncTeleportButtons` from the live capability; the Manage row re-lays its buttons
+  (`layoutManageButtons`) so a hidden Teleport leaves no gap.
 - `client/TienLastSeenWhere_Arrow.lua` + `client/TienLastSeenWhere_Route.lua`: the floor arrow (see below).
 - `client/TienLastSeenWhere_Options.lua`: per-player `PZAPI.ModOptions`: Search rule combo (index 1..4 = rules 2..5),
   arrow colour picker (`addColorPicker`, with alpha), arrow size slider (%). Names and tooltips are passed as

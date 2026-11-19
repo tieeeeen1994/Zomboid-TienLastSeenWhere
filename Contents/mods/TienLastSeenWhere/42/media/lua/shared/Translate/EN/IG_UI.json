@@ -34,6 +34,8 @@
     "IGUI_TienLastSeenWhere_GoThere": "Go there",
     "IGUI_TienLastSeenWhere_Take": "Take",
     "IGUI_TienLastSeenWhere_StopArrow": "Hide arrow",
+    "IGUI_TienLastSeenWhere_Teleport": "Teleport",
+    "IGUI_TienLastSeenWhere_Teleport_tooltip": "Admin: teleport onto this place. The arrow points at it and the loot window opens it once you arrive.",
     "IGUI_TienLastSeenWhere_Debug": "Last Seen Where (debug)",
     "IGUI_TienLastSeenWhere_Debug_PointHere": "Point the arrow here",
     "IGUI_TienLastSeenWhere_Debug_Clear": "Remove the arrow",

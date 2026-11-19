@@ -415,6 +415,7 @@ function Window:createChildren()
         { "go", "IGUI_TienLastSeenWhere_GoThere", Window.onGoThere },
         { "take", "IGUI_TienLastSeenWhere_Take", Window.onTake },
         { "stop", "IGUI_TienLastSeenWhere_StopArrow", Window.onStopArrow },
+        { "teleport", "IGUI_TienLastSeenWhere_Teleport", Window.onTeleport },
     }
     local x = PAD
     for _, spec in ipairs(labels) do
@@ -425,10 +426,12 @@ function Window:createChildren()
         button.anchorBottom = true
         button:initialise()
         button:instantiate()
+        button.tooltip = getTextOrNull(spec[2] .. "_tooltip")
         self:addChild(button)
         self.buttons[spec[1]] = button
         x = x + width + PAD / 2
     end
+    self.buttons.teleport:setVisible(false)
 
     local nameWidth = 0
     for _, key in ipairs({ "UI_TienLastSeenWhere_NameFormat_Server", "UI_TienLastSeenWhere_NameFormat_Username",
@@ -453,8 +456,10 @@ function Window:createChildren()
     for _, header in pairs(self.headers) do
         self.findWidgets[#self.findWidgets + 1] = header
     end
-    for _, button in pairs(self.buttons) do
-        self.findWidgets[#self.findWidgets + 1] = button
+    for name, button in pairs(self.buttons) do
+        if name ~= "teleport" then
+            self.findWidgets[#self.findWidgets + 1] = button
+        end
     end
     self.findWidgets[#self.findWidgets + 1] = self.nameCombo
     self.privacyWidgets = {}
@@ -959,6 +964,21 @@ function Window:updateButtons()
     self.buttons.go:setEnable(place ~= nil)
     self.buttons.take:setEnable(place ~= nil and player ~= nil and LSW.Actions.Takeable(player, place, row.fullType) ~= nil)
     self.buttons.stop:setEnable(LSW.Arrow.GetTarget(self.playerNum) ~= nil)
+    self.buttons.teleport:setEnable(place ~= nil)
+end
+
+function Window:syncTeleportButtons()
+    local can = LSW.Actions.CanTeleport(self:player())
+    local button = self.buttons and self.buttons.teleport
+    if button then
+        local visible = can and self.tab == Window.TAB_FIND
+        if button:isVisible() ~= visible then
+            button:setVisible(visible)
+        end
+    end
+    if self.syncManageTeleport then
+        self:syncManageTeleport(can and self.tab == Window.TAB_MANAGE)
+    end
 end
 
 function Window:releaseKeyboard()
@@ -990,6 +1010,15 @@ function Window:onTake()
     local row = self:selectedRow()
     if row and row.place then
         LSW.Actions.Take(self:player(), row.place, row.fullType)
+    end
+end
+
+function Window:onTeleport()
+    self:releaseKeyboard()
+    local row = self:selectedRow()
+    if row and row.place then
+        LSW.Actions.Teleport(self:player(), row.place, row.fullType)
+        self:updateButtons()
     end
 end
 
@@ -1141,6 +1170,7 @@ function Window:prerender()
         self:setTab(Window.TAB_FIND)
     end
     self:layoutTabs()
+    self:syncTeleportButtons()
     if self.tab == Window.TAB_PRIVACY then
         self:prerenderPrivacy(now)
         return

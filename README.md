@@ -14,7 +14,7 @@ then follow an arrow on the floor back to it.
 - **Where to look.** Everywhere, This building, Nearby, or On me (your own bags).
 - **Show** puts an arrow on the floor at your feet, aimed at the place, and highlights the container (or the items on the floor) in the arrow colour. On another floor it points
   to the stairs first and shows how many floors up or down. **Go there** walks you to it and opens the loot window on
-  it. **Take** picks the item up once it is within reach.
+  it. **Take** picks the item up once it is within reach. **Teleport** (admins) puts you on the place and opens it.
 - **Memory follows the character.** It is kept on the server and forgotten when the character dies.
 - **Who shares with whom.** Finding works like word of mouth: you only learn from players who would tell you.
   - Factions on: only faction members share, and only with their own faction. A player in no faction shares with
@@ -35,7 +35,7 @@ then follow an arrow on the floor back to it.
 - **Manage (admins).** A Manage tab lists every player who remembers something. Pick one to see what they remember,
   then make them forget an item everywhere, at single places, or everything. Only their own memory by default; tick
   "Also from shared knowledge" to also remove what they saw last from what Opened by anyone finds. Their privacy
-  marks are kept, and seeing something again brings it back.
+  marks are kept, and seeing something again brings it back. Teleport takes you to a selected place.
 - **Gone is gone.** Walk past a container, corpse, bag or floor spot you remember and it is no longer there (smashed,
   burnt, moved, picked up): it is forgotten.
 

@@ -120,6 +120,7 @@ function Window:createManageChildren(top, entryHeight, buttonTop, buttonHeight)
         { "forget", "IGUI_TienLastSeenWhere_ManageForget", Window.onManageForget },
         { "wipe", "IGUI_TienLastSeenWhere_ManageWipe", Window.onManageWipe },
         { "show", "IGUI_TienLastSeenWhere_Show", Window.onManageShow },
+        { "teleport", "IGUI_TienLastSeenWhere_Teleport", Window.onManageTeleport },
         { "refresh", "IGUI_TienLastSeenWhere_ManageRefresh", Window.onManageRefresh },
     }
     local x = PAD
@@ -136,7 +137,8 @@ function Window:createManageChildren(top, entryHeight, buttonTop, buttonHeight)
         self.mButtons[spec[1]] = button
         x = x + width + PAD / 2
     end
-    self.mStatusX = x + PAD / 2
+    self.mButtons.teleport:setVisible(false)
+    self:layoutManageButtons()
 
     local tickText = getText("IGUI_TienLastSeenWhere_ManageShared")
     local tickWidth = getTextManager():MeasureStringX(UIFont.Small, tickText) + buttonHeight + 8
@@ -151,8 +153,32 @@ function Window:createManageChildren(top, entryHeight, buttonTop, buttonHeight)
     self.mSharedTick.tooltip = getText("IGUI_TienLastSeenWhere_ManageShared_tooltip")
 
     self.manageWidgets = { self.mPlayerEntry, self.mItemEntry, self.mPlayers, self.mItems, self.mSharedTick }
-    for _, button in pairs(self.mButtons) do
-        self.manageWidgets[#self.manageWidgets + 1] = button
+    for name, button in pairs(self.mButtons) do
+        if name ~= "teleport" then
+            self.manageWidgets[#self.manageWidgets + 1] = button
+        end
+    end
+end
+
+Window.MANAGE_BUTTON_ORDER = { "forget", "wipe", "show", "teleport", "refresh" }
+
+function Window:layoutManageButtons()
+    local x = PAD
+    for _, name in ipairs(Window.MANAGE_BUTTON_ORDER) do
+        local button = self.mButtons[name]
+        if button:isVisible() or name ~= "teleport" then
+            button:setX(x)
+            x = x + button:getWidth() + PAD / 2
+        end
+    end
+    self.mStatusX = x + PAD / 2
+end
+
+function Window:syncManageTeleport(visible)
+    local button = self.mButtons and self.mButtons.teleport
+    if button and button:isVisible() ~= visible then
+        button:setVisible(visible)
+        self:layoutManageButtons()
     end
 end
 
@@ -487,6 +513,7 @@ function Window:updateManageButtons()
     self.mButtons.forget:setEnable(self.mUsername ~= nil and (#types > 0 or #at > 0) and not busy)
     self.mButtons.wipe:setEnable(self.mUsername ~= nil and not busy)
     self.mButtons.show:setEnable(row ~= nil and row.row == "place")
+    self.mButtons.teleport:setEnable(row ~= nil and row.row == "place")
     local checked = 0
     for _ in pairs(self.mChecked.types) do
         checked = checked + 1
@@ -501,13 +528,8 @@ function Window:updateManageButtons()
     if self.mButtons.forget:getTitle() ~= title then
         self.mButtons.forget:setTitle(title)
         local width = getTextManager():MeasureStringX(UIFont.Small, title) + 16
-        local grow = width - self.mButtons.forget:getWidth()
         self.mButtons.forget:setWidth(width)
-        for _, name in ipairs({ "wipe", "show", "refresh" }) do
-            local button = self.mButtons[name]
-            button:setX(button:getX() + grow)
-        end
-        self.mStatusX = self.mStatusX + grow
+        self:layoutManageButtons()
     end
 end
 
@@ -577,6 +599,14 @@ function Window:onManageShow()
     local row = self:selectedManageRow()
     if row and row.row == "place" then
         LSW.Actions.Show(self:player(), row.place, row.fullType)
+    end
+end
+
+function Window:onManageTeleport()
+    self:releaseKeyboard()
+    local row = self:selectedManageRow()
+    if row and row.row == "place" then
+        LSW.Actions.Teleport(self:player(), row.place, row.fullType)
     end
 end
 
